@@ -1,0 +1,1355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]{display:none!important}
+#auth-gate{position:fixed;inset:0;z-index:60;background:var(--bg,#f2f4f3);display:flex;align-items:center;justify-content:center;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
+.gate-card{background:var(--surface,#fff);border:1px solid var(--line,#d5dbd8);border-top:5px solid var(--accent,#1f5f53);border-radius:12px;padding:28px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:12px;color:var(--ink,#17201d)}
+.gate-card h1{font-family:var(--display,sans-serif);font-size:24px;margin:0}
+.gate-card p{margin:0;color:var(--muted,#5d6a65);line-height:1.5}
+.gate-card form{display:flex;flex-direction:column;gap:8px}
+.gate-card label{font-size:13px;color:var(--muted,#5d6a65)}
+.gate-card input{font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line,#d5dbd8);border-radius:8px;background:var(--surface,#fff);color:inherit}
+.gate-card .btn{justify-content:center;padding:10px 14px;font-size:15px}
+.gate-msg{font-size:14px}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="supabase-shim.js"></script>
+</head>
+<body>
+<title>Tim &amp; Myles Booking</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a working booking desk. Sticky top bar with views; Leads is list + detail side by side on desktop, one at a time on phone. */
+:root{
+  --bg:#f2f4f3; --surface:#ffffff; --sunken:#e8ecea; --line:#d5dbd8; --ink:#17201d; --muted:#5d6a65;
+  --accent:#1f5f53;        /* spruce: the desk's own color */
+  --accent-ink:#ffffff;
+  --venue:#2563a8; --venue-soft:#dce8f6;      /* venues: blue */
+  --festival:#c2620a; --festival-soft:#fbe7d3; /* festivals: orange */
+  --private:#8a3f86; --private-soft:#f1e0f0;   /* private events: plum */
+  --good:#2f7d32; --warn:#a86a00; --bad:#b3261e;
+  --display:"Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --body:"Public Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --r:8px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121816; --surface:#1a2220; --sunken:#0e1312; --line:#2c3633; --ink:#e7ecea; --muted:#9aa7a2;
+  --accent:#5fb8a5; --accent-ink:#0d1714;
+  --venue:#7fb2ec; --venue-soft:#1d2d40; --festival:#f0a35b; --festival-soft:#3a2614; --private:#d79bd3; --private-soft:#33213a;
+  --good:#7cc47f; --warn:#e3b04f; --bad:#f2847b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121816; --surface:#1a2220; --sunken:#0e1312; --line:#2c3633; --ink:#e7ecea; --muted:#9aa7a2;
+  --accent:#5fb8a5; --accent-ink:#0d1714;
+  --venue:#7fb2ec; --venue-soft:#1d2d40; --festival:#f0a35b; --festival-soft:#3a2614; --private:#d79bd3; --private-soft:#33213a;
+  --good:#7cc47f; --warn:#e3b04f; --bad:#f2847b; color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+
+/* Top bar */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.backbtn{font-weight:600}
+.backbtn:disabled{opacity:.35}
+.brand{font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:-.01em;white-space:nowrap}
+.brand span{color:var(--accent)}
+nav{display:flex;gap:2px;flex-wrap:wrap;flex:1;min-width:0}
+nav a{padding:6px 11px;border-radius:999px;text-decoration:none;color:var(--muted);font-weight:500;font-size:14px}
+nav a[aria-current="page"]{background:var(--ink);color:var(--surface)}
+.top-actions{display:flex;gap:8px}
+
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:7px 12px;cursor:pointer;font-weight:500;font-size:14px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:var(--ink);white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.danger{color:var(--bad)}
+.btn.sm{padding:4px 9px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:default}
+
+main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px;max-width:1440px;margin:0 auto}
+
+/* Kind colors */
+.k-venue{--k:var(--venue);--ks:var(--venue-soft)}
+.k-festival{--k:var(--festival);--ks:var(--festival-soft)}
+.k-private{--k:var(--private);--ks:var(--private-soft)}
+.kchip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--k);background:var(--ks);padding:2px 8px;border-radius:999px}
+.kdot{width:9px;height:9px;border-radius:50%;background:var(--k);flex:none}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.r-Strong{color:var(--good);border-color:currentColor}
+.r-Conditional{color:var(--warn);border-color:currentColor}
+.r-Hold{color:var(--muted);border-style:dashed}
+.r-Reject{color:var(--bad);border-color:currentColor}
+.s-pill{font-size:12px;padding:1px 8px;border-radius:4px;background:var(--sunken);color:var(--muted);white-space:nowrap}
+.s-Contacted,.s-Follow{background:var(--venue-soft);color:var(--venue)}
+.s-In{background:var(--festival-soft);color:var(--festival)}
+.s-Booked{background:var(--accent);color:var(--accent-ink)}
+.s-Declined,.s-Do{text-decoration:line-through}
+
+/* Leads view */
+.leads{display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:16px;align-items:start}
+.listcol{position:sticky;top:calc(env(safe-area-inset-top,0px) + 64px);display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 90px);min-width:0}
+.kindtabs{display:flex;gap:6px;flex-wrap:wrap}
+.kindtabs button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 11px;cursor:pointer;font-size:13px;font-weight:500;display:inline-flex;gap:6px;align-items:center}
+.kindtabs button[aria-pressed="true"]{border-color:var(--k,var(--ink));box-shadow:inset 0 0 0 1px var(--k,var(--ink))}
+.kindtabs .n{font-family:var(--mono);color:var(--muted);font-size:12px}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.filters input[type=search]{grid-column:1/-1}
+.field,.filters input,.filters select{width:100%;border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;background:var(--surface)}
+.list{overflow:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);min-height:200px}
+.row{display:grid;grid-template-columns:4px 1fr auto;gap:10px;padding:9px 12px 9px 0;border-bottom:1px solid var(--line);cursor:pointer;align-items:center}
+.row:last-child{border-bottom:0}
+.row .bar{align-self:stretch;background:var(--k)}
+.row:hover{background:var(--sunken)}
+.row[aria-selected="true"]{background:var(--ks)}
+.row .nm{font-weight:600;font-size:14px;line-height:1.25}
+.row .sub{font-size:12.5px;color:var(--muted)}
+.row .right{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.stategroup{position:sticky;top:0;background:var(--sunken);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:4px 12px;border-bottom:1px solid var(--line);z-index:1}
+.count{font-size:12.5px;color:var(--muted)}
+.dchip{display:inline-block;font-family:var(--mono);font-size:11.5px;font-weight:500;color:var(--k);background:var(--ks);padding:0 6px;border-radius:4px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dchip.off{color:var(--muted);background:var(--sunken)}
+.d-head .dchip{font-size:13px;padding:2px 8px}
+
+/* Detail */
+.detail{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);min-width:0}
+.d-head{padding:18px 20px 14px;border-bottom:1px solid var(--line);border-top:5px solid var(--k);border-radius:var(--r) var(--r) 0 0;display:flex;flex-direction:column;gap:8px}
+.d-head h2{font-family:var(--display);font-size:26px;line-height:1.1;margin:0;text-wrap:balance;letter-spacing:-.01em}
+.d-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.d-actions{display:flex;gap:8px;flex-wrap:wrap}
+.d-body{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.d-sec{padding:16px 20px;border-bottom:1px solid var(--line);min-width:0}
+.d-sec.full{grid-column:1/-1}
+.d-sec h3{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:14px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.copyline{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.copy{border:0;background:var(--sunken);border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;color:var(--muted)}
+.research{white-space:pre-wrap;font-size:14px;max-width:72ch}
+.links{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:13.5px;margin-top:8px}
+.status-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.status-row label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+
+/* Timeline */
+.composer{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.composer textarea{min-height:80px;resize:vertical}
+.composer .crow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.tl li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.tl .ic{width:28px;height:28px;border-radius:50%;background:var(--sunken);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--muted);font-family:var(--mono)}
+.tl .ic.email{background:var(--venue-soft);color:var(--venue)}
+.tl .ic.reply{background:var(--accent);color:var(--accent-ink)}
+.tl .ic.call{background:var(--festival-soft);color:var(--festival)}
+.tl .when{font-size:12px;color:var(--muted)}
+.tl .txt{white-space:pre-wrap;font-size:14px;overflow-wrap:anywhere}
+.tl .subj{font-weight:600;font-size:14px}
+
+.empty{padding:40px 24px;text-align:center;color:var(--muted)}
+.empty h3{font-family:var(--display);color:var(--ink);font-size:20px;margin:0 0 6px}
+
+/* Today */
+.today{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);min-width:0}
+.panel h2{font-family:var(--display);font-size:18px;margin:0;padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.panel h2 small{font-family:var(--body);font-weight:400;font-size:13px;color:var(--muted)}
+.plist{list-style:none;margin:0;padding:0}
+.plist li{display:grid;grid-template-columns:4px 1fr auto;gap:10px;padding:9px 14px 9px 0;border-top:1px solid var(--line);cursor:pointer;align-items:center}
+.plist li:first-child{border-top:0}
+.plist li .bar{align-self:stretch;background:var(--k)}
+.plist .nm{font-weight:600;font-size:14px}
+.plist .sub{font-size:12.5px;color:var(--muted)}
+.pipeline{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.pipeline button{background:var(--surface);border:0;padding:12px 14px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.pipeline button:hover{background:var(--sunken)}
+.pipeline .big{font-family:var(--display);font-size:28px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.pipeline .lab{font-size:12.5px;color:var(--muted)}
+
+/* Calendar */
+.cal-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.cal-head h2{font-family:var(--display);font-size:24px;margin:0;min-width:200px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-left:auto;align-items:center}
+.legend span{display:inline-flex;gap:5px;align-items:center}
+.swatch{width:14px;height:10px;border-radius:3px;background:var(--k)}
+.swatch.hold{background:transparent;border:1.5px dashed var(--muted)}
+.calwrap{overflow-x:auto}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--line);gap:1px;min-width:640px}
+.cal .dow{background:var(--sunken);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:6px 8px}
+.cal .day{background:var(--surface);min-height:104px;padding:5px 6px;display:flex;flex-direction:column;gap:3px;cursor:pointer;min-width:0}
+.cal .day.out{background:var(--bg)}
+.cal .day.out .dn{opacity:.45}
+.cal .day.is-today .dn{background:var(--ink);color:var(--surface);border-radius:999px;padding:0 6px}
+.dn{font-family:var(--mono);font-size:12px;align-self:flex-start}
+details.grp{border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+details.grp[open]{padding-bottom:12px}
+details.grp > summary{cursor:pointer;padding:10px 0;font-weight:600;font-size:14px;color:var(--ink);list-style-position:inside}
+details.grp > *:not(summary){margin-top:8px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.checks{display:flex;flex-direction:column;gap:8px}
+.sheet label.ck{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var(--ink);font-weight:400}
+.ck input{width:18px;height:18px;accent-color:var(--accent)}
+.files{display:flex;flex-wrap:wrap;gap:10px}
+.file{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.thumb{padding:0;border:0;background:none;cursor:zoom-in;display:block}
+.thumb.doc{cursor:pointer}
+.viewer{position:fixed;inset:0;z-index:40;background:rgb(8 12 11 / .94);display:flex;flex-direction:column;color:#fff}
+.vw-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:calc(10px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) 10px max(12px,env(safe-area-inset-left,0px))}
+.vw-bar .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;opacity:.85}
+.vw-bar .btn{background:rgb(255 255 255 / .12);border-color:transparent;color:#fff}
+.vw-body{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:0 12px calc(12px + env(safe-area-inset-bottom,0px))}
+.vw-body img{max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in;background:#fff}
+.vw-body.zoom{align-items:flex-start;justify-content:flex-start}
+.vw-body.zoom img{max-width:none;max-height:none;cursor:zoom-out}
+.vw-pdf{background:rgb(255 255 255 / .08);border-radius:12px;padding:28px;text-align:center;max-width:420px}
+.vw-pdf b{font-size:28px;display:block;margin-bottom:8px}
+.file img{width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block}
+.file .doc{width:96px;height:96px;border-radius:6px;border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;font-weight:700;color:var(--ink);background:var(--sunken);text-align:center;font-size:13px;overflow:hidden}
+.file .doc span{font-weight:400;font-size:11px;color:var(--muted);padding:0 4px;overflow-wrap:anywhere}
+.exp{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.exp > div{flex:1;min-width:200px}
+.exp p{margin:4px 0 0}
+.money-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
+.money-sum div{background:var(--surface);padding:12px 14px}
+.money-sum .big{font-family:var(--display);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.money-sum .lab{font-size:12.5px;color:var(--muted)}
+.owed{color:var(--bad)}
+.dayhead{display:flex;justify-content:space-between;align-items:center}
+.addday{font:600 16px/1 var(--body);color:var(--muted);opacity:.45;padding:2px 7px;border-radius:5px;border:0;background:transparent;cursor:pointer}
+.addday:hover,.addday:focus-visible{opacity:1;background:var(--accent);color:var(--accent-ink)}
+.day:hover .addday{opacity:1;background:var(--sunken)}
+@media (hover:none){.addday{opacity:.7}}
+.ev{display:block;font-size:12px;line-height:1.25;padding:2px 5px;border-radius:4px;background:var(--k);color:var(--surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1.5px solid var(--k);text-align:left;cursor:pointer;width:100%}
+.ev.hold{background:var(--ks);color:var(--k);border-style:dashed}
+.ev.cancel{text-decoration:line-through;opacity:.6}
+.ev.deadline{background:transparent;color:var(--k);border:1px solid var(--k);font-weight:600}
+.upcoming{margin-top:18px}
+
+/* Sheet (modal) */
+.scrim{position:fixed;inset:0;background:rgb(10 16 14 / .45);z-index:20;display:flex;justify-content:center;align-items:flex-start;overflow:auto;
+  padding:max(24px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(24px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.sheet{background:var(--surface);border-radius:12px;width:100%;max-width:640px;box-shadow:0 20px 50px rgb(0 0 0 / .25);border-top:5px solid var(--k,var(--accent))}
+.sheet header{padding:16px 20px 8px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.sheet header h2{font-family:var(--display);font-size:21px;margin:0;line-height:1.2}
+.sheet .sb{padding:4px 20px 20px;display:flex;flex-direction:column;gap:12px}
+.sheet label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);font-weight:500}
+.sheet label > .field{color:var(--ink);font-weight:400;font-size:15px}
+.sheet textarea.field{min-height:220px;resize:vertical;line-height:1.5}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sheet .foot{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+.note{font-size:13px;color:var(--muted);background:var(--sunken);border-radius:6px;padding:8px 10px}
+.sendbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:999px;font-size:14px;z-index:30;box-shadow:0 8px 20px rgb(0 0 0 / .2)}
+table.states{width:100%;border-collapse:collapse;font-size:14px;background:var(--surface)}
+table.states th,table.states td{padding:7px 12px;border-bottom:1px solid var(--line);text-align:left}
+table.states th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--sunken);position:sticky;top:0}
+table.states td.n{font-family:var(--mono);text-align:right}
+table.states tr{cursor:pointer}
+table.states tr:hover td{background:var(--sunken)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r)}
+.back{display:none}
+.savebar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom,0px));margin:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--ink);color:var(--surface);padding:10px 12px 10px 16px;border-radius:10px;box-shadow:0 10px 24px rgb(0 0 0 / .22);z-index:4}
+.savebar .msg{flex:1;min-width:140px;font-weight:600;font-size:14px}
+.savebar .btn{border-color:transparent}
+.savebar .btn.ghost{color:var(--surface)}
+.savebar[hidden]{display:none!important}
+.savebar.flash{animation:flash .5s 2}
+@keyframes flash{50%{background:var(--bad)}}
+.dirty-field{box-shadow:0 0 0 2px var(--warn)}
+
+@media (max-width:860px){
+  .leads{grid-template-columns:1fr}
+  .listcol{position:static;max-height:none}
+  .list{max-height:none}
+  body.show-detail .listcol{display:none}
+  body:not(.show-detail) .detail{display:none}
+  .back{display:inline-flex}
+  .d-body{grid-template-columns:1fr}
+  .grid2{grid-template-columns:1fr}
+  .grid4{grid-template-columns:1fr 1fr}
+  .kv{grid-template-columns:90px 1fr}
+  .brand{font-size:16px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .top{gap:8px;padding-block:8px}
+  .long{display:none}
+  .backbtn{padding:6px 10px}
+  nav{order:3;flex:1 0 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-4px}
+  nav a{white-space:nowrap}
+  .top-actions .btn{padding:6px 10px}
+}
+@media (prefers-reduced-motion:no-preference){.row,.btn{transition:background .12s,border-color .12s}}
+</style>
+
+<header class="top">
+  <button class="btn backbtn" id="btn-back" type="button" aria-label="Go back to the previous screen" disabled>← Back</button>
+  <div class="brand">Tim <span>&amp;</span> Myles Booking</div>
+  <nav id="nav" aria-label="Views">
+    <a href="#today" data-view="today">Today</a>
+    <a href="#leads" data-view="leads">Leads</a>
+    <a href="#calendar" data-view="calendar">Calendar</a>
+    <a href="#money" data-view="money">Money</a>
+    <a href="#templates" data-view="templates">Email templates</a>
+    <a href="#states" data-view="states">States</a>
+  </nav>
+  <div class="top-actions">
+    <button class="btn" id="btn-new" type="button">+ New<span class="long"> venue</span></button>
+    <button class="btn ghost" id="btn-export" type="button" aria-label="Export or back up your data">Export</button>
+    <button class="btn ghost" id="btn-prefs" type="button" aria-label="My email settings"><span class="long">My </span>email</button>
+  </div>
+</header>
+<main id="main">
+  <div class="empty"><h3>Opening your booking desk</h3><p>Loading venues, festivals and private events. Venues show in blue, festivals in orange and private events in plum.</p></div>
+</main>
+<div id="sheet-root"></div>
+<div id="viewer-root"></div>
+<div id="auth-gate" hidden></div>
+<div id="toast-root"></div>
+
+<script>
+(() => {
+const KINDS = {venue:"Venue", festival:"Festival", private:"Private event"};
+const STATUSES = ["Not contacted","Contacted","Follow up","In talks","Booked","Declined","Do not contact"];
+const OPEN_STATUSES = ["Not contacted","Contacted","Follow up","In talks"];
+const RATINGS = ["Strong","Conditional","Hold","Reject","Unrated"];
+const EV_STATUSES = ["Hold","Confirmed","Contract sent","Contract signed","Played","Cancelled"];
+const DEALS = ["TBD","Guarantee","Door split","Guarantee vs. door","Ticket split","Flat fee (private)","Donation / hat"];
+const LOG_KINDS = {note:"Note", call:"Phone call", email:"Email sent", reply:"Reply received", text:"Text"};
+const STATE_NAMES = {AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",DC:"District of Columbia",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
+
+const S = {
+  db:null, user:null, me:null, ready:{leads:false, events:false, templates:false},
+  leads:new Map(), events:[], templates:[], activity:[], activityFor:null, unsubAct:null,
+  view:"today", selected:null,
+  f:{kind:"all", q:"", state:"", status:"", rating:"", email:false},
+  prefs:{service:"gmail", from:"tim@timthompsonguitar.com", signature:"Tim Thompson\nTim & Myles Thompson\nhttps://timandmylesthompson.com/"},
+  calMonth:null, names:{}, draft:null, hist:[],
+};
+try { const f = JSON.parse(localStorage.getItem("tm-filters")||"null"); if (f) Object.assign(S.f, f); } catch {}
+try { const p = JSON.parse(localStorage.getItem("tm-prefs")||"null"); if (p) Object.assign(S.prefs, p); } catch {}
+
+const $ = (s, el=document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const todayISO = () => iso(new Date());
+const addDays = (n, from=new Date()) => { const d = new Date(from); d.setDate(d.getDate()+n); return iso(d); };
+const parseISO = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+const fmtDate = s => s ? parseISO(s).toLocaleDateString(undefined,{month:"short",day:"numeric",year: parseISO(s).getFullYear()===new Date().getFullYear()?undefined:"numeric"}) : "";
+const fmtWhen = s => { const d = new Date(s); return d.toLocaleDateString(undefined,{month:"short",day:"numeric"}) + " · " + d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}); };
+const kindOf = l => (l && KINDS[l.kind]) ? l.kind : "venue";
+const statusCls = s => "s-" + String(s||"").split(" ")[0];
+const place = l => [l.city, l.stateCode].filter(Boolean).join(", ");
+const MON = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+const DATE_RE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:\s*(?:[–-]|and|through|to)\s*(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+)?(\d{1,2}))?(?:,?\s*(\d{4}))?/i;
+const _dateCache = new Map();
+/* Short festival dates pulled from the research timing note, e.g. "Jul 7–10, 2027". */
+function festDates(l){
+  const s = l.eventDates || "";
+  if (_dateCache.has(s)) return _dateCache.get(s);
+  let out = null;
+  const m = s.match(DATE_RE);
+  if (m) {
+    const cap = x => x[0].toUpperCase() + x.slice(1,3).toLowerCase();
+    const yr = m[5] || (s.match(/\b(20\d\d)\b/) || [])[1] || "";
+    const text = cap(m[1]) + " " + m[2] + (m[4] ? "–" + (m[3] ? cap(m[3]) + " " : "") + m[4] : "") + (yr ? ", " + yr : "");
+    let past = false;
+    if (yr) { const end = new Date(+yr, MON.indexOf((m[3]||m[1]).slice(0,3).toLowerCase()), +(m[4]||m[2])); past = iso(end) < todayISO(); }
+    out = {text, past};
+  } else if (/memorial day/i.test(s)) out = {text:"Memorial Day weekend", past:false, loose:true};
+  else if (/labor day/i.test(s)) out = {text:"Labor Day weekend", past:false, loose:true};
+  _dateCache.set(s, out); return out;
+}
+function nextDate(l){
+  const t = todayISO();
+  return S.events.filter(e => e.leadId===l.id && e.date >= t && e.status!=="Cancelled").sort((a,b)=>a.date.localeCompare(b.date))[0] || null;
+}
+/* One short date label for a lead: festival dates, or the next date on your calendar. */
+function dateLabel(l){
+  const nd = nextDate(l);
+  if (nd) return {html:`<span class="dchip">${esc(fmtDate(nd.date))} · ${esc(nd.status||"Hold")}</span>`, text:fmtDate(nd.date)};
+  if (kindOf(l)==="festival") {
+    const d = festDates(l);
+    if (!d) return {html:`<span class="dchip off">Dates TBA</span>`, text:"Dates TBA"};
+    return d.past ? {html:`<span class="dchip off" title="Last edition; next dates not announced">Last: ${esc(d.text)}</span>`, text:"Last: "+d.text}
+                  : {html:`<span class="dchip">${esc(d.text)}</span>`, text:d.text};
+  }
+  return null;
+}
+
+function toast(msg){
+  const r = $("#toast-root"); r.innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`;
+  clearTimeout(toast.t); toast.t = setTimeout(()=> r.innerHTML="", 2600);
+}
+async function copyText(text, btn){
+  try { await navigator.clipboard.writeText(text); toast("Copied"); }
+  catch { if (btn) { const r = document.createRange(); r.selectNodeContents(btn.previousElementSibling || btn); const s = getSelection(); s.removeAllRanges(); s.addRange(r); } toast("Select the text and copy it"); }
+}
+async function write(fn, okMsg){
+  try { await fn(); if (okMsg) toast(okMsg); return true; }
+  catch(e){
+    const c = e && e.code;
+    toast(c==="quota_exceeded" ? "The database is full. Delete old entries to make room." :
+          c==="invalid_argument" ? "This login can view but not change booking data." :
+          "Couldn't save. Check your connection and try again.");
+    console.error(e); return false;
+  }
+}
+
+/* ---------- Data ---------- */
+async function boot(){
+  if (!window.claude?.use) { renderNoDb(); return; }
+  const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]);
+  S.db = db; S.user = user;
+  try { S.assets = await claude.use("assets"); } catch { S.assets = null; }
+  try { S.downloads = await claude.use("downloads"); } catch { S.downloads = null; }
+  if (!db) { renderNoDb(); return; }
+  if (user) {
+    S.me = await user.id();
+    if (S.me) {
+      try { const p = await db.doc(`data/users/${S.me}/prefs`).get(); if (p.exists) Object.assign(S.prefs, p.data()); } catch {}
+    }
+  }
+  db.collection("leads").limit(1000).onSnapshot(snap => {
+    S.leads = new Map(snap.docs.map(d => [d.id, {id:d.id, ...d.data()}]));
+    S.ready.leads = true; render();
+  }, e => { console.error(e); toast("Lost connection to leads. Reload the page."); });
+  db.collection("events").limit(1000).onSnapshot(snap => {
+    S.events = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    S.ready.events = true; render();
+  }, e => console.error(e));
+  db.collection("templates").limit(200).onSnapshot(snap => {
+    S.templates = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b)=>(a.order??99)-(b.order??99) || String(a.name).localeCompare(b.name));
+    S.ready.templates = true; if (S.view==="templates") render();
+  }, e => console.error(e));
+}
+function watchActivity(leadId){
+  if (S.activityFor === leadId) return;
+  if (S.unsubAct) S.unsubAct();
+  S.activityFor = leadId; S.activity = [];
+  if (!leadId || !S.db) return;
+  S.unsubAct = S.db.collection("activity").where("leadId","==",leadId).limit(500).onSnapshot(async snap => {
+    S.activity = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b)=> String(b.at).localeCompare(String(a.at)));
+    const ids = [...new Set(S.activity.map(a=>a.author).filter(Boolean))];
+    if (ids.length && S.user?.profiles) { try { const ps = await S.user.profiles(ids); for (const id of ids) S.names[id] = ps[id]?.name || ""; } catch {} }
+    if (S.view==="leads" && S.selected===leadId) renderTimeline();
+  }, e => console.error(e));
+}
+const leadRef = id => S.db.collection("leads").doc(id);
+async function logActivity(leadId, kind, body, subject){
+  const doc = {leadId, kind, body: body||"", at: new Date().toISOString()};
+  if (subject) doc.subject = subject;
+  if (S.me) doc.author = S.me;
+  return S.db.collection("activity").add(doc);
+}
+async function setStatus(lead, status){
+  if (lead.status === status) return;
+  const old = lead.status || "Not contacted";
+  const ok = await write(() => leadRef(lead.id).update({status, updatedAt:new Date().toISOString()}));
+  if (ok) write(() => logActivity(lead.id, "status", `${old} → ${status}`));
+}
+
+/* ---------- One-save draft for status, follow-up and note ---------- */
+/* Only fields the person actually changed count as unsaved; anything the app changes on its own (a gig moving status to Booked) just flows through. */
+function draftFor(l){
+  if (!S.draft || S.draft.leadId !== l.id) S.draft = {leadId:l.id, status:l.status||"Not contacted", followUp:l.followUp||"", noteBody:"", noteKind:"note", touched:{}};
+  const d = S.draft;
+  if (!d.touched.status) d.status = l.status || "Not contacted";
+  if (!d.touched.followUp) d.followUp = l.followUp || "";
+  return d;
+}
+function isDirty(){
+  const d = S.draft; if (!d) return false;
+  const l = S.leads.get(d.leadId); if (!l) return false;
+  return (d.touched.status && d.status !== (l.status||"Not contacted")) || (d.touched.followUp && d.followUp !== (l.followUp||"")) || !!d.noteBody.trim();
+}
+function updateSaveBar(){
+  const bar = $("#savebar"); if (!bar) return;
+  const l = S.leads.get(S.draft?.leadId); const d = S.draft;
+  bar.hidden = !isDirty();
+  $("#d-status")?.classList.toggle("dirty-field", !!(l && d && d.touched.status && d.status !== (l.status||"Not contacted")));
+  $("#d-follow")?.classList.toggle("dirty-field", !!(l && d && d.touched.followUp && d.followUp !== (l.followUp||"")));
+}
+function blockIfDirty(){
+  if (!isDirty()) return false;
+  const bar = $("#savebar");
+  if (bar) { bar.hidden = false; bar.classList.remove("flash"); void bar.offsetWidth; bar.classList.add("flash"); bar.scrollIntoView({block:"nearest"}); }
+  toast("Save or discard your changes first");
+  return true;
+}
+async function saveAll(){
+  const d = S.draft; const l = d && S.leads.get(d.leadId); if (!l || !isDirty()) return;
+  const btn = $("#save-all"); if (btn) btn.disabled = true;
+  const oldStatus = l.status || "Not contacted";
+  const note = d.noteBody.trim(), contactKind = ["call","email","reply","text"].includes(d.noteKind);
+  let status = d.status, followUp = d.followUp || null;
+  if (note && contactKind && status==="Not contacted") status = "Contacted";
+  if (note && d.noteKind==="email" && !followUp) followUp = addDays(10);
+  const upd = {};
+  if (status !== oldStatus) upd.status = status;
+  if (followUp !== (l.followUp||null)) upd.followUp = followUp;
+  if (note && contactKind) upd.lastContact = todayISO();
+  let ok = true;
+  if (Object.keys(upd).length) { upd.updatedAt = new Date().toISOString(); ok = await write(() => leadRef(l.id).update(upd)); }
+  if (ok && note) ok = await write(() => logActivity(l.id, d.noteKind, note));
+  if (ok && upd.status) await write(() => logActivity(l.id, "status", `${oldStatus} → ${status}`));
+  if (btn) btn.disabled = false;
+  if (!ok) return;
+  S.draft = null; toast("Saved"); render();
+}
+
+/* ---------- Back button history ---------- */
+function snapshotNav(){ return {view:S.view, selected:S.selected, detail:document.body.classList.contains("show-detail")}; }
+function pushHist(){
+  const s = snapshotNav(), top = S.hist[S.hist.length-1];
+  if (!top || top.view!==s.view || top.selected!==s.selected || top.detail!==s.detail) S.hist.push(s);
+  if (S.hist.length > 60) S.hist.shift();
+}
+function goBack(){
+  if ($("#viewer")) { closeViewer(); return; }
+  if ($("#scrim")) { closeSheet(); return; }
+  if (blockIfDirty()) return;
+  const s = S.hist.pop(); if (!s) return;
+  S.view = s.view; S.selected = s.selected;
+  document.body.classList.toggle("show-detail", s.detail);
+  if (location.hash !== "#"+s.view) history.replaceState(null,"","#"+s.view);
+  render(); window.scrollTo(0,0);
+}
+
+/* ---------- Routing ---------- */
+function go(view){ if (view !== S.view && S.view==="leads" && blockIfDirty()) return; pushHist(); S.view = view; if (location.hash !== "#"+view) history.replaceState(null,"","#"+view); render(); window.scrollTo(0,0); }
+function openLead(id){ if (id !== S.selected && blockIfDirty()) return; if (id !== S.selected || S.view!=="leads" || !document.body.classList.contains("show-detail")) pushHist(); S.selected = id; S.view = "leads"; document.body.classList.add("show-detail"); history.replaceState(null,"","#leads"); render(); window.scrollTo(0,0); }
+window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (["today","leads","calendar","money","templates","states"].includes(v)) { S.view=v; render(); } });
+
+function render(){
+  const bb = $("#btn-back"); if (bb) bb.disabled = !S.hist.length;
+  document.querySelectorAll("#nav a").forEach(a => a.toggleAttribute("aria-current", a.dataset.view===S.view) || (a.dataset.view===S.view && a.setAttribute("aria-current","page")));
+  document.querySelectorAll("#nav a").forEach(a => { if (a.dataset.view===S.view) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
+  if (!S.ready.leads) return;
+  const m = $("#main");
+  if (S.view==="today") m.innerHTML = viewToday();
+  else if (S.view==="leads") { m.innerHTML = viewLeads(); afterLeads(); }
+  else if (S.view==="calendar") m.innerHTML = viewCalendar();
+  else if (S.view==="templates") m.innerHTML = viewTemplates();
+  else if (S.view==="money") m.innerHTML = viewMoney();
+  else if (S.view==="states") m.innerHTML = viewStates();
+}
+function renderNoDb(){
+  $("#main").innerHTML = `<div class="empty"><h3>Sign in to see your booking data</h3><p>Reload the page and sign in with your email.</p></div>`;
+}
+
+/* ---------- Today ---------- */
+function leadLi(l, right){
+  return `<li class="k-${kindOf(l)}" data-open="${esc(l.id)}"><span class="bar"></span><div><div class="nm">${esc(l.name)}</div><div class="sub">${(()=>{const d=dateLabel(l);return d?d.html+" ":""})()}${esc(place(l))}${l.contactName? " · "+esc(l.contactName):""}</div></div><div>${right||""}</div></li>`;
+}
+function viewToday(){
+  const t = todayISO(), leads = [...S.leads.values()];
+  const due = leads.filter(l => l.followUp && l.followUp <= t && OPEN_STATUSES.includes(l.status||"Not contacted")).sort((a,b)=>a.followUp.localeCompare(b.followUp));
+  const soon = S.events.filter(e => e.date >= t && e.date <= addDays(60) && e.status!=="Cancelled").sort((a,b)=> (a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));
+  const deadlines = leads.filter(l => l.kind==="festival" && l.deadline && l.deadline >= t && l.deadline <= addDays(90)).sort((a,b)=>a.deadline.localeCompare(b.deadline));
+  const start = leads.filter(l => (l.status||"Not contacted")==="Not contacted" && (l.priority==="High" || l.rating==="Strong") && l.emails?.length)
+    .sort((a,b)=> (a.priority==="High"?0:1)-(b.priority==="High"?0:1) || String(a.stateCode).localeCompare(b.stateCode)).slice(0,10);
+  const counts = Object.fromEntries(STATUSES.map(s=>[s,0])); leads.forEach(l => counts[l.status||"Not contacted"]++);
+  const pipe = STATUSES.slice(0,5).map(s => `<button type="button" data-status-filter="${esc(s)}"><span class="big">${counts[s]}</span><span class="lab">${esc(s)}</span></button>`).join("");
+  return `<div class="today">
+    <div class="pipeline">${pipe}</div>
+    <section class="panel"><h2>Follow-ups due <small>${due.length}</small></h2>
+      ${due.length ? `<ul class="plist">${due.map(l=>leadLi(l,`<span class="mono small ${l.followUp<t?"":"muted"}" style="color:${l.followUp<t?"var(--bad)":""}">${fmtDate(l.followUp)}</span>`)).join("")}</ul>`
+      : `<p class="empty small">Nothing due. When you log an email, a follow-up date is set 10 days out.</p>`}
+    </section>
+    <section class="panel"><h2>Next 60 days <small>${soon.length} dates</small></h2>
+      ${soon.length ? `<ul class="plist">${soon.map(e=>{ const l=S.leads.get(e.leadId); return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title|| l?.name || "Date")}</div><div class="sub">${esc(e.status||"Hold")}${l? " · "+esc(place(l)):""}${e.fee? " · $"+esc(e.fee):""}</div></div><span class="mono small">${fmtDate(e.date)}</span></li>`;}).join("")}</ul>`
+      : `<p class="empty small">No dates yet. Add holds and confirmed shows from the Calendar or from any lead.</p>`}
+    </section>
+    <section class="panel"><h2>Start here <small>top unreached leads with email</small></h2>
+      ${start.length ? `<ul class="plist">${start.map(l=>leadLi(l, `<span class="pill r-${esc(l.rating)}">${esc(l.rating)}</span>`)).join("")}</ul>` : `<p class="empty small">You've reached out to every high-priority lead.</p>`}
+    </section>
+    ${deadlines.length ? `<section class="panel"><h2>Festival deadlines <small>next 90 days</small></h2><ul class="plist">${deadlines.map(l=>leadLi(l,`<span class="mono small">${fmtDate(l.deadline)}</span>`)).join("")}</ul></section>` : ""}
+  </div>`;
+}
+
+/* ---------- Leads ---------- */
+function filtered(){
+  const f = S.f, q = f.q.trim().toLowerCase();
+  return [...S.leads.values()].filter(l =>
+    (f.kind==="all" || kindOf(l)===f.kind) &&
+    (!f.state || l.stateCode===f.state) &&
+    (!f.status || (l.status||"Not contacted")===f.status) &&
+    (!f.rating || (l.rating||"Unrated")===f.rating) &&
+    (!f.email || (l.emails && l.emails.length)) &&
+    (!q || [l.name,l.city,l.state,l.contactName,(l.emails||[]).join(" "),l.fitText].join(" ").toLowerCase().includes(q))
+  ).sort((a,b)=> String(a.stateCode).localeCompare(String(b.stateCode)) || String(a.city).localeCompare(String(b.city)) || String(a.name).localeCompare(String(b.name)));
+}
+function viewLeads(){
+  const all = [...S.leads.values()];
+  const kc = k => all.filter(l => k==="all" || kindOf(l)===k).length;
+  const states = [...new Set(all.map(l=>l.stateCode).filter(Boolean))].sort();
+  const list = filtered();
+  let rows = "", lastState = null;
+  for (const l of list) {
+    if (l.stateCode !== lastState) { lastState = l.stateCode; rows += `<div class="stategroup">${esc(STATE_NAMES[l.stateCode]||l.stateCode||"No state")}</div>`; }
+    const st = l.status||"Not contacted";
+    rows += `<div class="row k-${kindOf(l)}" role="option" tabindex="0" data-open="${esc(l.id)}" aria-selected="${l.id===S.selected}"><span class="bar"></span>
+      <div style="min-width:0"><div class="nm">${esc(l.name)}</div><div class="sub">${(()=>{const d=dateLabel(l);return d?d.html+" ":""})()}${esc(l.city||"")}${l.seats? ` · <span class="mono">${l.seats}</span> seats`:""}${!(l.emails||[]).length? " · no email":""}</div></div>
+      <div class="right"><span class="pill r-${esc(l.rating||"Unrated")}">${esc(l.rating||"Unrated")}</span>${st!=="Not contacted"?`<span class="s-pill ${statusCls(st)}">${esc(st)}</span>`:""}</div></div>`;
+  }
+  const kt = (k,label) => `<button type="button" class="${k==="all"?"":"k-"+k}" data-kind="${k}" aria-pressed="${S.f.kind===k}">${k!=="all"?`<span class="kdot"></span>`:""}${label} <span class="n">${kc(k)}</span></button>`;
+  return `<div class="leads">
+    <div class="listcol">
+      <div class="kindtabs">${kt("all","All")}${kt("venue","Venues")}${kt("festival","Festivals")}${kt("private","Private")}</div>
+      <div class="filters">
+        <input type="search" id="f-q" placeholder="Search name, city, contact, notes" value="${esc(S.f.q)}" aria-label="Search leads">
+        <select id="f-state" aria-label="State"><option value="">All states</option>${states.map(s=>`<option value="${s}" ${S.f.state===s?"selected":""}>${esc(STATE_NAMES[s]||s)}</option>`).join("")}</select>
+        <select id="f-status" aria-label="Status"><option value="">Any status</option>${STATUSES.map(s=>`<option ${S.f.status===s?"selected":""}>${s}</option>`).join("")}</select>
+        <select id="f-rating" aria-label="Fit rating"><option value="">Any fit rating</option>${RATINGS.map(s=>`<option ${S.f.rating===s?"selected":""}>${s}</option>`).join("")}</select>
+        <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="f-email" ${S.f.email?"checked":""} style="width:auto"> Has email</label>
+      </div>
+      <button class="btn" type="button" id="btn-new2" style="align-self:flex-start">+ Add ${S.f.kind==="festival"?"festival":S.f.kind==="private"?"private client":"venue"}</button>
+      <div class="count">${list.length} of ${all.length} leads${S.f.kind!=="all"||S.f.state||S.f.status||S.f.rating||S.f.q||S.f.email?` · <a href="#" id="f-clear">Clear filters</a>`:""}</div>
+      <div class="list" role="listbox" aria-label="Leads">${rows || `<div class="empty small">${all.length? "No leads match these filters." : "No leads yet. Use + New lead, or ask Claude to import a research file."}</div>`}</div>
+    </div>
+    <section class="detail" id="detail"></section>
+  </div>`;
+}
+function afterLeads(){
+  renderDetail();
+  const sel = $(`.row[aria-selected="true"]`); if (sel && !document.body.classList.contains("show-detail")) sel.scrollIntoView({block:"nearest"});
+}
+function saveFilters(){ try { localStorage.setItem("tm-filters", JSON.stringify(S.f)); } catch {} }
+
+function renderDetail(){
+  const box = $("#detail"); if (!box) return;
+  const l = S.leads.get(S.selected);
+  if (!l) { box.className = "detail"; box.innerHTML = `<div class="empty"><h3>Pick a lead</h3><p>Choose a venue, festival or private client from the list to see contacts, research and your notes.</p></div>`; watchActivity(null); return; }
+  watchActivity(l.id);
+  const k = kindOf(l), d = draftFor(l), st = d.status;
+  const evs = S.events.filter(e => e.leadId===l.id).sort((a,b)=>a.date.localeCompare(b.date));
+  box.className = `detail k-${k}`;
+  box.innerHTML = `
+  <div class="d-head">
+    <div class="d-meta"><span class="kchip"><span class="kdot"></span>${KINDS[k]}</span>
+      <span class="pill r-${esc(l.rating||"Unrated")}">${esc(l.rating||"Unrated")}</span>${l.priority==="High"?`<span class="pill">High priority</span>`:""}
+      ${l.priorityLabel && !/^(STRONG|CONDITIONAL|HOLD|HIGH PRIORITY)$/.test(l.priorityLabel)?`<span class="small muted">${esc(l.priorityLabel.toLowerCase())}</span>`:""}</div>
+    <h2>${esc(l.name)}</h2>
+    ${(()=>{const d=dateLabel(l);return d?`<div>${d.html}</div>`:""})()}
+    <div class="muted">${esc(place(l))}${l.seats?` · <span class="mono">${l.seats}</span> seats`:""}${l.mapUrl?` · <a href="${esc(l.mapUrl)}" target="_blank" rel="noopener">Map</a>`:""}${l.website?` · <a href="${esc(l.website)}" target="_blank" rel="noopener">Website</a>`:""}</div>
+    <div class="d-actions">
+      <button class="btn primary" type="button" id="act-email" ${(l.emails||[]).length?"":"title='No email on file. You can type one in the composer.'"}>Email</button>
+      <button class="btn" type="button" id="act-note">Add note</button>
+      <button class="btn" type="button" id="act-date">Add gig</button>
+      <button class="btn" type="button" id="act-edit">Edit details</button>
+    </div>
+  </div>
+  <div class="d-body">
+    <div class="d-sec">
+      <h3>Booking status</h3>
+      <div class="status-row">
+        <label>Status<select class="field" id="d-status">${STATUSES.map(s=>`<option ${s===st?"selected":""}>${s}</option>`).join("")}</select></label>
+        <label>Follow up on<input class="field" type="date" id="d-follow" value="${esc(d.followUp)}"></label>
+      </div>
+      ${evs.length?`<div style="margin-top:12px;display:flex;flex-direction:column;gap:4px">${evs.map(e=>`<button type="button" class="ev ${evClass(e)} k-${esc(e.kind||k)}" data-event="${esc(e.id)}">${fmtDate(e.date)} · ${esc(e.status||"Hold")}${e.fee?" · $"+esc(e.fee):""}</button>`).join("")}</div>`:""}
+    </div>
+    <div class="d-sec">
+      <h3>Contact</h3>
+      <dl class="kv">
+        <dt>Person</dt><dd>${esc(l.contactName||"Not named")}</dd>
+        <dt>Email</dt><dd>${(l.emails||[]).length? l.emails.map(e=>`<div class="copyline"><span>${esc(e)}</span><button class="copy" type="button" data-copy="${esc(e)}">Copy</button></div>`).join("") : `<span class="muted">None on file</span>`}</dd>
+        <dt>Phone</dt><dd>${(l.phones||[]).length? l.phones.map(p=>`<div class="copyline"><a class="mono" href="tel:${esc(p.replace(/[^\d+]/g,""))}">${esc(p)}</a><button class="copy" type="button" data-copy="${esc(p)}">Copy</button></div>`).join("") : `<span class="muted">None on file</span>`}</dd>
+        ${l.submissionUrl?`<dt>Submit</dt><dd><a href="${esc(l.submissionUrl)}" target="_blank" rel="noopener">Submission form</a></dd>`:""}
+        ${k==="festival"?`<dt>Festival dates</dt><dd>${esc(l.eventDates||"Unknown")}</dd><dt>Deadline</dt><dd>${l.deadline?fmtDate(l.deadline):"Unknown"}</dd>`:""}
+      </dl>
+    </div>
+    <div class="d-sec full">
+      <h3>Notes and history <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">Calls, emails, replies and notes, newest first</span></h3>
+      <form class="composer" id="note-form">
+        <textarea class="field" id="note-body" placeholder="What happened? On your phone, tap the keyboard's microphone to dictate.">${esc(d.noteBody)}</textarea>
+        <div class="crow">
+          <select class="field" id="note-kind" style="width:auto">${Object.entries(LOG_KINDS).map(([v,t])=>`<option value="${v}" ${d.noteKind===v?"selected":""}>${t}</option>`).join("")}</select>
+          <button class="btn primary" type="submit">Save changes</button>
+          <span class="small muted">Saves the note, status and follow-up date together. Logging a call, email or reply moves status to Contacted.</span>
+        </div>
+      </form>
+      <ul class="tl" id="timeline"></ul>
+    </div>
+    <div class="d-sec full">
+      <h3>Research <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">${esc(l.origin||"")}${l.checked?` · checked ${fmtDate(l.checked)}`:""}</span></h3>
+      ${l.fitText?`<div class="research">${esc(l.fitText)}</div>`:""}
+      ${l.contactText?`<p class="small muted" style="margin:12px 0 4px">How to reach them</p><div class="research">${esc(l.contactText)}</div>`:""}
+      ${l.locationText?`<p class="small muted" style="margin:12px 0 4px">Location</p><div class="research">${esc(l.locationText)}</div>`:""}
+      ${(l.links||[]).length?`<div class="links">${l.links.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.label||"Source")}</a>`).join("")}</div>`:""}
+      ${!l.fitText&&!l.contactText?`<p class="muted small">No research notes yet.</p>`:""}
+    </div>
+  </div>
+  <div class="savebar" id="savebar" hidden role="status"><span class="msg">Unsaved changes</span><button class="btn ghost" type="button" id="discard">Discard</button><button class="btn primary" type="button" id="save-all">Save changes</button></div>`;
+  updateSaveBar();
+  renderTimeline();
+}
+function renderTimeline(){
+  const ul = $("#timeline"); if (!ul) return;
+  if (!S.activity.length) { ul.innerHTML = `<li style="grid-template-columns:1fr"><span class="muted small">Nothing logged yet. Notes you save here show up on every device.</span></li>`; return; }
+  const ic = {note:"N", call:"☎", email:"@", reply:"↩", text:"T", status:"→"};
+  ul.innerHTML = S.activity.map(a => `<li><span class="ic ${esc(a.kind)}">${ic[a.kind]||"•"}</span><div style="min-width:0">
+    <div class="when">${esc(LOG_KINDS[a.kind]||(a.kind==="status"?"Status":"Note"))} · ${esc(fmtWhen(a.at))}${a.author && S.names[a.author]?" · "+esc(S.names[a.author]):""}
+      <button class="copy" type="button" data-del-act="${esc(a.id)}" title="Delete this entry">Delete</button></div>
+    ${a.subject?`<div class="subj">${esc(a.subject)}</div>`:""}<div class="txt">${esc(a.body)}</div></div></li>`).join("");
+}
+
+/* ---------- Calendar ---------- */
+function evClass(e){ return e.status==="Cancelled" ? "cancel" : (e.status==="Hold" || !e.status) ? "hold" : ""; }
+function viewCalendar(){
+  if (!S.calMonth) { const d = new Date(); S.calMonth = new Date(d.getFullYear(), d.getMonth(), 1); }
+  const m = S.calMonth, first = new Date(m), start = new Date(m); start.setDate(1 - first.getDay());
+  const t = todayISO(), cells = [];
+  const byDate = {};
+  S.events.forEach(e => (byDate[e.date] ||= []).push(e));
+  [...S.leads.values()].filter(l=>l.kind==="festival" && l.deadline).forEach(l => (byDate[l.deadline] ||= []).push({deadline:true, leadId:l.id, title:"Deadline: "+l.name, kind:"festival"}));
+  for (let i=0;i<42;i++){
+    const d = new Date(start); d.setDate(start.getDate()+i); const ds = iso(d);
+    if (i>=35 && d.getMonth()!==m.getMonth()) break;
+    const evs = (byDate[ds]||[]).sort((a,b)=>String(a.time||"").localeCompare(String(b.time||"")));
+    cells.push(`<div class="day ${d.getMonth()!==m.getMonth()?"out":""} ${ds===t?"is-today":""}" data-day="${ds}"><div class="dayhead"><span class="dn">${d.getDate()}</span><button type="button" class="addday" data-day="${ds}" aria-label="Add a gig on ${ds}">+</button></div>
+      ${evs.map(e => e.deadline ? `<button type="button" class="ev deadline k-festival" data-open="${esc(e.leadId)}">${esc(e.title)}</button>`
+        : `<button type="button" class="ev ${evClass(e)} k-${esc(e.kind||kindOf(S.leads.get(e.leadId)))}" data-event="${esc(e.id)}">${e.time?esc(fmtTime(e.time))+" ":""}${esc(e.title||S.leads.get(e.leadId)?.name||"Date")}</button>`).join("")}</div>`);
+  }
+  const upcoming = S.events.filter(e=>e.date>=t && e.status!=="Cancelled").sort((a,b)=>a.date.localeCompare(b.date)).slice(0,25);
+  return `<div class="cal-head">
+      <button class="btn" type="button" data-cal="-1" aria-label="Previous month">←</button>
+      <h2>${m.toLocaleDateString(undefined,{month:"long",year:"numeric"})}</h2>
+      <button class="btn" type="button" data-cal="1" aria-label="Next month">→</button>
+      <button class="btn ghost" type="button" data-cal="0">Today</button>
+      <button class="btn primary" type="button" id="cal-add">+ Add gig</button>
+      <div class="legend"><span class="k-venue"><span class="swatch"></span>Venue</span><span class="k-festival"><span class="swatch"></span>Festival</span><span class="k-private"><span class="swatch"></span>Private event</span><span><span class="swatch hold"></span>Hold (dashed)</span></div>
+    </div>
+    <div class="calwrap"><div class="cal">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>`<div class="dow">${d}</div>`).join("")}${cells.join("")}</div></div>
+    <section class="panel upcoming"><h2>Upcoming <small>${upcoming.length} dates</small></h2>
+      ${upcoming.length?`<ul class="plist">${upcoming.map(e=>{const l=S.leads.get(e.leadId);return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title||l?.name||"Date")}</div><div class="sub">${esc(e.status||"Hold")}${l?" · "+esc(place(l)):""}</div></div><span class="mono small">${fmtDate(e.date)}${e.time?" · "+esc(fmtTime(e.time)):""}</span></li>`}).join("")}</ul>`:`<p class="empty small">Tap any day to add a gig. A day can hold as many gigs as you need; tap it again to add another.</p>`}
+    </section>`;
+}
+const fmtTime = t => { const [h,mm] = t.split(":").map(Number); return `${((h+11)%12)+1}${mm?":"+String(mm).padStart(2,"0"):""}${h<12?"a":"p"}`; };
+
+/* ---------- Templates ---------- */
+function viewTemplates(){
+  return `<div class="cal-head"><h2>Email templates</h2><button class="btn primary" type="button" id="tpl-add">+ New template</button></div>
+  <p class="muted small" style="max-width:70ch">Placeholders fill in automatically: <span class="mono">{{first_name}}</span> <span class="mono">{{venue}}</span> <span class="mono">{{city}}</span> <span class="mono">{{state}}</span> <span class="mono">{{signature}}</span>. Your signature is under My email.</p>
+  ${S.templates.length? `<div class="today">${S.templates.map(t=>`<section class="panel"><h2>${esc(t.name)} <button class="btn sm" type="button" data-tpl="${esc(t.id)}">Edit</button></h2><div style="padding:12px 16px"><div class="subj" style="font-weight:600">${esc(t.subject)}</div><div class="research small muted" style="margin-top:6px;max-height:180px;overflow:hidden">${esc(t.body)}</div></div></section>`).join("")}</div>`
+  : `<div class="empty"><h3>No templates yet</h3><p>Add a first inquiry and a follow-up so emails take seconds.</p></div>`}`;
+}
+
+/* ---------- States ---------- */
+function viewStates(){
+  const rows = {};
+  for (const l of S.leads.values()) {
+    const s = l.stateCode || "—"; const r = rows[s] ||= {n:0, v:0, f:0, p:0, reached:0, talks:0, booked:0};
+    r.n++; r[{venue:"v",festival:"f",private:"p"}[kindOf(l)]]++;
+    const st = l.status||"Not contacted"; if (st!=="Not contacted") r.reached++; if (st==="In talks") r.talks++; if (st==="Booked") r.booked++;
+  }
+  const keys = Object.keys(rows).sort();
+  return `<div class="cal-head"><h2>Coverage by state</h2><span class="muted small">Click a state to see its leads.</span></div>
+  <div class="tablewrap"><table class="states"><thead><tr><th>State</th><th style="text-align:right">Venues</th><th style="text-align:right">Festivals</th><th style="text-align:right">Private</th><th style="text-align:right">Reached</th><th style="text-align:right">In talks</th><th style="text-align:right">Booked</th></tr></thead>
+  <tbody>${keys.map(k=>{const r=rows[k];return `<tr data-state="${esc(k)}"><td>${esc(STATE_NAMES[k]||k)}</td><td class="n">${r.v}</td><td class="n">${r.f}</td><td class="n">${r.p}</td><td class="n">${r.reached}</td><td class="n">${r.talks}</td><td class="n">${r.booked}</td></tr>`}).join("")}</tbody></table></div>`;
+}
+
+/* ---------- Money ---------- */
+function viewMoney(){
+  const t = todayISO();
+  const gigs = S.events.filter(e => e.status!=="Cancelled");
+  const conf = gigs.filter(e => e.status!=="Hold");
+  const holds = gigs.filter(e => e.status==="Hold");
+  const sum = arr => arr.reduce((n,e)=> n + (money(e.fee)||0), 0);
+  const paid = conf.filter(e=>e.paid), unpaid = conf.filter(e=>!e.paid);
+  const owed = unpaid.filter(e=>e.date<=t).sort((a,b)=>a.date.localeCompare(b.date));
+  const uncounted = conf.filter(e=>e.fee && money(e.fee)===null);
+  const byMonth = {};
+  conf.forEach(e => { const k = e.date.slice(0,7); const r = byMonth[k] ||= {n:0, booked:0, paid:0}; r.n++; r.booked += money(e.fee)||0; if (e.paid) r.paid += money(e.fee)||0; });
+  const months = Object.keys(byMonth).sort();
+  const label = e => esc(e.title || S.leads.get(e.leadId)?.name || "Gig");
+  return `<div class="cal-head"><h2>Money</h2><span class="muted small">Confirmed gigs only. Holds are shown separately. Amounts come from each gig's Fee field.</span></div>
+  <div class="money-sum">
+    <div><div class="big">${usd(sum(conf))}</div><div class="lab">Booked (${conf.length} gigs)</div></div>
+    <div><div class="big">${usd(sum(paid))}</div><div class="lab">Paid</div></div>
+    <div><div class="big ${sum(unpaid)?"owed":""}">${usd(sum(unpaid))}</div><div class="lab">Not paid yet</div></div>
+    <div><div class="big">${usd(sum(holds))}</div><div class="lab">On hold (${holds.length})</div></div>
+  </div>
+  <div class="today">
+    <section class="panel"><h2>Waiting on payment <small>gigs already played</small></h2>
+      ${owed.length?`<ul class="plist">${owed.map(e=>`<li class="k-${esc(e.kind||"venue")}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${label(e)}</div><div class="sub">${fmtDate(e.date)}${e.dayContact?" · "+esc(e.dayContact):""}</div></div><span class="mono small owed">${e.fee?esc(e.fee):"no fee set"}</span></li>`).join("")}</ul>`:`<p class="empty small">Nobody owes you for past gigs. Tick "Paid in full" on a gig when the money arrives.</p>`}
+    </section>
+    <section class="panel"><h2>By month</h2>
+      ${months.length?`<div class="tablewrap" style="border:0"><table class="states"><thead><tr><th>Month</th><th style="text-align:right">Gigs</th><th style="text-align:right">Booked</th><th style="text-align:right">Paid</th><th style="text-align:right">Owed</th></tr></thead><tbody>
+      ${months.map(k=>{const r=byMonth[k];const d=parseISO(k+"-01");return `<tr style="cursor:default"><td>${d.toLocaleDateString(undefined,{month:"short",year:"numeric"})}</td><td class="n">${r.n}</td><td class="n">${usd(r.booked)}</td><td class="n">${usd(r.paid)}</td><td class="n ${r.booked-r.paid?"owed":""}">${usd(r.booked-r.paid)}</td></tr>`}).join("")}
+      </tbody></table></div>`:`<p class="empty small">Add a fee to confirmed gigs to see totals by month.</p>`}
+    </section>
+    ${uncounted.length?`<section class="panel"><h2>Not in the totals <small>fee isn't a dollar amount</small></h2><ul class="plist">${uncounted.map(e=>`<li class="k-${esc(e.kind||"venue")}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${label(e)}</div><div class="sub">${fmtDate(e.date)}</div></div><span class="small muted">${esc(e.fee)}</span></li>`).join("")}</ul></section>`:""}
+  </div>`;
+}
+
+/* ---------- Photo and PDF viewer (stays inside the app) ---------- */
+function extFor(f){ const t = f.type||""; return t.includes("pdf")?"pdf":t.includes("png")?"png":t.includes("webp")?"webp":t.includes("gif")?"gif":"jpg"; }
+function closeViewer(){ $("#viewer-root").innerHTML = ""; }
+function openViewer(files, i){
+  const f = files[i]; if (!f) return;
+  const isImg = /^image\//.test(f.type||"");
+  const base = (f.name||"contract").replace(/\.[a-z0-9]+$/i,"");
+  $("#viewer-root").innerHTML = `<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="File viewer">
+    <div class="vw-bar">
+      <button class="btn" type="button" id="vw-close">← Back</button>
+      <span class="name">${esc(f.name||"File")}${files.length>1?` · ${i+1} of ${files.length}`:""}</span>
+      ${files.length>1?`<button class="btn" type="button" id="vw-prev" aria-label="Previous">‹</button><button class="btn" type="button" id="vw-next" aria-label="Next">›</button>`:""}
+      ${S.downloads?`<button class="btn" type="button" id="vw-save">Save to device</button>`:""}
+    </div>
+    <div class="vw-body" id="vw-body">${isImg
+      ? `<img src="${esc(fileUrl(f))}" alt="${esc(f.name||"Photo")}" id="vw-img">`
+      : `<div class="vw-pdf"><b>PDF</b><div>${esc(f.name||"Document")}</div><p class="small" style="opacity:.75">PDFs can't be shown inside the app. Save it to your device to open it.</p></div>`}</div>
+  </div>`;
+  $("#vw-close").onclick = closeViewer;
+  $("#vw-img") && ($("#vw-img").onclick = () => $("#vw-body").classList.toggle("zoom"));
+  $("#vw-prev") && ($("#vw-prev").onclick = () => openViewer(files, (i-1+files.length)%files.length));
+  $("#vw-next") && ($("#vw-next").onclick = () => openViewer(files, (i+1)%files.length));
+  $("#vw-save") && ($("#vw-save").onclick = async () => {
+    try {
+      const res = await fetch(fileUrl(f)); if (!res.ok) throw new Error("fetch "+res.status);
+      await S.downloads.save({filename: `${base}.${extFor(f)}`, data: await res.blob()});
+    } catch (err) {
+      if (err?.code==="declined") return;
+      toast(err?.code==="unavailable" ? "Saving isn't available here." : "Couldn't save the file. Try again.");
+      console.error(err);
+    }
+  });
+}
+
+/* ---------- Export and backup ---------- */
+function loadScript(src){ return new Promise((ok, bad) => { const el = document.createElement("script"); el.src = src; el.onload = ok; el.onerror = () => bad(new Error("load "+src)); document.head.appendChild(el); }); }
+async function allActivity(){
+  const out = []; let last = "";
+  for (let i = 0; i < 50; i++) {
+    const snap = await S.db.collection("activity").where("at", ">", last).orderBy("at").limit(1000).get();
+    snap.docs.forEach(d => out.push({id:d.id, ...d.data()}));
+    if (snap.size < 1000) break;
+    last = out[out.length-1].at;
+  }
+  return out;
+}
+const stamp = () => todayISO();
+async function saveFile(filename, data){
+  try { await S.downloads.save({filename, data}); return true; }
+  catch (e) { if (e?.code !== "declined") { toast("Couldn't save the file. Try again."); console.error(e); } return false; }
+}
+async function exportSpreadsheet(btn){
+  btn.disabled = true; const label = btn.textContent; btn.textContent = "Preparing…";
+  try {
+    if (!window.XLSX) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+    const acts = await allActivity();
+    const leads = [...S.leads.values()].sort((a,b)=> String(a.stateCode).localeCompare(String(b.stateCode)) || String(a.city).localeCompare(String(b.city)) || String(a.name).localeCompare(String(b.name)));
+    const L = leads.map(l => ({"Type":KINDS[kindOf(l)], "Name":l.name, "City":l.city||"", "State":l.stateCode||"", "Status":l.status||"Not contacted",
+      "Follow up":l.followUp||"", "Last contact":l.lastContact||"", "Fit rating":l.rating||"", "Priority":l.priority||"", "Contact person":l.contactName||"",
+      "Emails":(l.emails||[]).join(", "), "Phones":(l.phones||[]).join(", "), "Seats":l.seats??"", "Festival dates":l.eventDates||"", "Deadline":l.deadline||"",
+      "Website":l.website||"", "Submission link":l.submissionUrl||"", "Research":l.fitText||"", "How to reach":l.contactText||"", "Location":l.locationText||"",
+      "Sources":(l.links||[]).map(x=>x.url).join("\n"), "Origin":l.origin||"", "Record ID":l.id}));
+    const gigName = e => e.title || S.leads.get(e.leadId)?.name || "";
+    const G = [...S.events].sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||""))).map(e => { const l = S.leads.get(e.leadId); return {
+      "Date":e.date, "Show time":e.time||"", "Where":gigName(e), "City/State":l?place(l):"", "Type":KINDS[e.kind]||"", "Status":e.status||"",
+      "Load-in":e.loadIn||"", "Soundcheck":e.soundcheck||"", "Doors":e.doors||"", "Set length":e.setLength||"", "Address":e.address||"", "Lodging":e.lodging||"",
+      "Day-of contact":e.dayContact||"", "Day-of phone":e.dayPhone||"", "Fee":e.fee||"", "Deposit":e.deposit||"", "Deposit received":e.depositPaid?"Yes":"",
+      "Paid in full":e.paid?"Yes":"", "Checklist done":CHECKS.filter(([k])=>e.checklist?.[k]).map(([,t])=>t).join("; "), "Files":(e.files||[]).map(f=>f.name||f.id).join("; "),
+      "Notes":e.notes||"", "Record ID":e.id}; });
+    const N = acts.sort((a,b)=>String(b.at).localeCompare(String(a.at))).map(a => { const l = S.leads.get(a.leadId); return {
+      "When":a.at ? new Date(a.at).toLocaleString() : "", "Venue / festival":l?.name||"(deleted)", "City/State":l?place(l):"", "Kind":LOG_KINDS[a.kind]||(a.kind==="status"?"Status change":a.kind),
+      "Subject":a.subject||"", "Text":a.body||""}; });
+    const T = S.templates.map(t => ({"Name":t.name, "Subject":t.subject, "Message":t.body}));
+    const wb = XLSX.utils.book_new();
+    const add = (rows, name, widths) => { const ws = XLSX.utils.json_to_sheet(rows.length?rows:[{"(empty)":""}]); if (widths) ws["!cols"] = widths.map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb, ws, name); };
+    add(L, "Venues & festivals", [12,38,16,6,14,11,11,11,8,26,32,16,6,24,11,30,30,60,50,40,40,22,22]);
+    add(G, "Gigs", [11,9,32,18,12,10]);
+    add(N, "Notes & history", [20,36,18,14,30,80]);
+    add(T, "Email templates", [22,40,80]);
+    const out = XLSX.write(wb, {bookType:"xlsx", type:"array"});
+    await saveFile(`Tim-Myles-booking-${stamp()}.xlsx`, new Uint8Array(out));
+  } catch (e) { toast("Couldn't build the spreadsheet. Check your connection and try again."); console.error(e); }
+  btn.disabled = false; btn.textContent = label;
+}
+async function exportBackup(btn){
+  btn.disabled = true; const label = btn.textContent; btn.textContent = "Preparing…";
+  try {
+    const data = {exportedAt:new Date().toISOString(), app:"Tim & Myles Booking", version:1,
+      leads:[...S.leads.values()], events:S.events, templates:S.templates, activity: await allActivity()};
+    await saveFile(`Tim-Myles-booking-backup-${stamp()}.json`, JSON.stringify(data, null, 1));
+  } catch (e) { toast("Couldn't build the backup. Try again."); console.error(e); }
+  btn.disabled = false; btn.textContent = label;
+}
+function openExport(){
+  const nFiles = S.events.reduce((n,e)=>n+(e.files||[]).length, 0);
+  sheet(`${head("Export and back up")}
+  <div class="sb">
+    ${S.downloads ? `
+    <div class="exp"><div><b>Spreadsheet</b><p class="small muted">Opens in Excel, Numbers or Google Sheets. One tab each for venues and festivals, gigs, notes and history, and email templates.</p></div>
+      <button class="btn primary" type="button" id="exp-xlsx">Save spreadsheet</button></div>
+    <div class="exp"><div><b>Full backup</b><p class="small muted">Everything in one file. Keep it on your computer as a backup; Import loads it back in.</p></div>
+      <button class="btn" type="button" id="exp-json">Save backup file</button></div>
+    <div class="exp"><div><b>Import a backup</b><p class="small muted">Load a backup file saved from this app or from the old claude.ai version. Records with the same ID are replaced; nothing else is deleted.</p></div>
+      <label class="btn" style="flex-direction:row;color:var(--ink);font-size:14px">Choose backup file<input type="file" id="imp-file" accept=".json,application/json" hidden></label></div>
+    <div class="note" id="imp-msg" hidden></div>
+    <div class="note">Contract photos aren't inside these files${nFiles?` (you have ${nFiles})`:""}. To keep a copy, open a gig, tap the photo, and use Save to device.</div>`
+    : `<p class="muted">Saving files isn't available in this view. Open the app in claude.ai in a web browser to export.</p>`}
+    <div class="foot"><button class="btn" type="button" data-close>Close</button></div>
+  </div>`);
+  $("#exp-xlsx")?.addEventListener("click", e => exportSpreadsheet(e.currentTarget));
+  $("#exp-json")?.addEventListener("click", e => exportBackup(e.currentTarget));
+  $("#imp-file")?.addEventListener("change", e => importBackup(e.target));
+}
+/* ---------- Import a backup file (from this app or the old claude.ai version) ---------- */
+async function importBackup(input){
+  const file = input.files[0]; input.value = ""; if (!file) return;
+  const msg = $("#imp-msg"); msg.hidden = false; msg.textContent = "Reading the file…";
+  let b;
+  try { b = JSON.parse(await file.text()); } catch { msg.textContent = "That file isn't a backup from this app."; return; }
+  if (!b || !Array.isArray(b.leads)) { msg.textContent = "That file isn't a backup from this app."; return; }
+  const strip = d => { const {id, ...rest} = d; return rest; };
+  const movedPhotos = [];
+  const events = (b.events||[]).map(e => {
+    const d = strip(e);
+    if ((d.files||[]).length && !d.files.every(f => /\.(jpg|png|webp|gif|pdf)$/i.test(f.id))) {
+      movedPhotos.push(d.title || e.id);
+      d.notes = (d.notes ? d.notes + "\n\n" : "") + `(${d.files.length} contract photo(s) stayed in the old claude.ai app: ${d.files.map(f=>f.name||"photo").join(", ")}. Add them again here.)`;
+      d.files = [];
+    }
+    return {collection:"events", id:e.id, data:d};
+  });
+  const rows = [
+    ...b.leads.map(l => ({collection:"leads", id:l.id, data:strip(l)})),
+    ...events,
+    ...(b.templates||[]).map(t => ({collection:"templates", id:t.id, data:strip(t)})),
+    ...(b.activity||[]).map(a => ({collection:"activity", id:a.id, data:strip(a)})),
+  ].filter(r => r.id);
+  const sb = window.__sb;
+  let done = 0;
+  try {
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error } = await sb.from("docs").upsert(rows.slice(i, i+200), { onConflict: "collection,id" });
+      if (error) throw error;
+      done = Math.min(rows.length, i + 200);
+      msg.textContent = `Importing… ${done} of ${rows.length}`;
+    }
+  } catch (e) {
+    console.error(e);
+    msg.textContent = `Stopped after ${done} of ${rows.length} records: ${e.message || "connection problem"}. Choose the file again to finish; nothing is duplicated.`;
+    return;
+  }
+  msg.textContent = `Imported ${b.leads.length} venues and festivals, ${events.length} gigs, ${(b.activity||[]).length} notes and ${(b.templates||[]).length} email templates.`
+    + (movedPhotos.length ? ` Contract photos on ${movedPhotos.length} gig(s) need to be added again; a note on each gig says which.` : "")
+    + " Reloading…";
+  setTimeout(() => location.reload(), 2500);
+}
+
+
+/* ---------- Sheets ---------- */
+function sheet(html, kind){
+  $("#sheet-root").innerHTML = `<div class="scrim" id="scrim"><div class="sheet ${kind?"k-"+kind:""}" role="dialog" aria-modal="true">${html}</div></div>`;
+  const first = $("#sheet-root .field"); if (first) first.focus();
+}
+function closeSheet(){ $("#sheet-root").innerHTML = ""; }
+const head = t => `<header><div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;min-width:0"><button class="btn sm backbtn" type="button" data-close aria-label="Go back">← Back</button><h2>${t}</h2></div><button class="btn ghost" type="button" data-close aria-label="Close">✕</button></header>`;
+
+function fillTpl(text, l){
+  const raw = (l.contactName||"").split(",")[0].trim();
+  const first = raw && !/booking|office|staff|team|committee|info|box|general/i.test(raw) ? raw.split(/\s+/)[0] : "";
+  return String(text||"")
+    .replace(/{{\s*first_name\s*}}/g, first || "there")
+    .replace(/{{\s*venue\s*}}/g, l.name||"")
+    .replace(/{{\s*city\s*}}/g, l.city||"")
+    .replace(/{{\s*state\s*}}/g, STATE_NAMES[l.stateCode] || l.state || "")
+    .replace(/{{\s*signature\s*}}/g, S.prefs.signature||"");
+}
+function mailLinks(to, subject, body){
+  const e = encodeURIComponent, p = S.prefs;
+  const au = p.from ? `&authuser=${e(p.from)}` : "";
+  return {
+    gmail: `https://mail.google.com/mail/?view=cm&fs=1${au}&to=${e(to)}&su=${e(subject)}&body=${e(body)}`,
+    outlook: `https://outlook.office.com/mail/deeplink/compose?to=${e(to)}&subject=${e(subject)}&body=${e(body)}`,
+    outlookcom: `https://outlook.live.com/mail/0/deeplink/compose?to=${e(to)}&subject=${e(subject)}&body=${e(body)}`,
+    mailto: `mailto:${encodeURI(to)}?subject=${e(subject)}&body=${e(body)}`,
+  };
+}
+const SERVICE_LABEL = {gmail:"Open in Gmail", outlook:"Open in Outlook (work)", outlookcom:"Open in Outlook.com", mailto:"Open in mail app"};
+
+function openEmail(l){
+  const tpls = S.templates;
+  const hasContact = (l.status||"Not contacted")!=="Not contacted";
+  const k = kindOf(l);
+  const want = hasContact ? /follow/i : k==="festival" ? /festival/i : k==="private" ? /private/i : /first|venue/i;
+  const def = tpls.find(t => want.test(t.name)) || tpls.find(t => /first|inquiry/i.test(t.name)) || tpls[0];
+  sheet(`${head("Email " + esc(l.name))}
+  <form class="sb" id="email-form">
+    <div class="grid2">
+      <label>To<input class="field" id="em-to" list="em-to-list" value="${esc((l.emails||[])[0]||"")}" placeholder="name@example.com">
+        <datalist id="em-to-list">${(l.emails||[]).map(e=>`<option value="${esc(e)}">`).join("")}</datalist></label>
+      <label>Template<select class="field" id="em-tpl"><option value="">Blank</option>${tpls.map(t=>`<option value="${esc(t.id)}" ${def&&def.id===t.id?"selected":""}>${esc(t.name)}</option>`).join("")}</select></label>
+    </div>
+    <label>Subject<input class="field" id="em-subj" value="${esc(def?fillTpl(def.subject,l):"")}"></label>
+    <label>Message<textarea class="field" id="em-body">${esc(def?fillTpl(def.body,l):"\n\n"+(S.prefs.signature||""))}</textarea></label>
+    ${l.contactText?`<div class="note"><b>Research says:</b> ${esc(l.contactText.slice(0,320))}${l.contactText.length>320?"…":""}</div>`:""}
+    <div class="sendbar">
+      <a class="btn primary" id="em-open" target="_blank" rel="noopener" href="#">${SERVICE_LABEL[S.prefs.service]||"Open in Gmail"}</a>
+      <button class="btn" type="button" id="em-copy">Copy message</button>
+      <span class="small muted">Other: <a href="#" id="em-alt-gmail" target="_blank" rel="noopener">Gmail</a> · <a href="#" id="em-alt-outlook" target="_blank" rel="noopener">Outlook</a> · <a href="#" id="em-alt-mailto">Mail app</a></span>
+    </div>
+    <div class="note">Your email opens with this message filled in. Send it there, then come back and tap <b>Log as sent</b> to save it to this venue and set a follow-up for 10 days out.</div>
+    <div class="foot"><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">Log as sent</button></div>
+  </form>`, kindOf(l));
+  const refresh = () => {
+    const L = mailLinks($("#em-to").value.trim(), $("#em-subj").value, $("#em-body").value);
+    $("#em-open").href = L[S.prefs.service] || L.gmail;
+    $("#em-alt-gmail").href = L.gmail; $("#em-alt-outlook").href = L.outlook; $("#em-alt-mailto").href = L.mailto;
+  };
+  refresh();
+  $("#email-form").addEventListener("input", refresh);
+  $("#em-tpl").addEventListener("change", e => { const t = S.templates.find(x=>x.id===e.target.value); if (t){ $("#em-subj").value = fillTpl(t.subject,l); $("#em-body").value = fillTpl(t.body,l); } refresh(); });
+  $("#em-copy").addEventListener("click", ev => copyText(`Subject: ${$("#em-subj").value}\n\n${$("#em-body").value}`, ev.currentTarget));
+  $("#email-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const to = $("#em-to").value.trim(), subj = $("#em-subj").value, body = $("#em-body").value;
+    const ok = await write(() => logActivity(l.id, "email", `To: ${to}\n\n${body}`, subj));
+    if (!ok) return;
+    const upd = {updatedAt:new Date().toISOString(), lastContact: todayISO()};
+    if (!l.followUp || l.followUp <= todayISO()) upd.followUp = addDays(10);
+    if ((l.status||"Not contacted")==="Not contacted") upd.status = "Contacted";
+    if (to && !(l.emails||[]).includes(to)) upd.emails = [...(l.emails||[]), to];
+    await write(() => leadRef(l.id).update(upd), "Email logged. Follow-up set.");
+    closeSheet();
+  });
+}
+
+function openLeadForm(l){
+  const isNew = !l; l = l || {kind: S.f.kind!=="all"?S.f.kind:"venue", status:"Not contacted", rating:"Unrated", emails:[], phones:[]};
+  sheet(`${head(isNew?"Add a venue, festival or private client":"Edit "+esc(l.name))}
+  <form class="sb" id="lead-form">
+    <div class="grid2">
+      <label>Type<select class="field" id="lf-kind">${Object.entries(KINDS).map(([v,t])=>`<option value="${v}" ${kindOf(l)===v?"selected":""}>${t}</option>`).join("")}</select></label>
+      <label>Fit rating<select class="field" id="lf-rating">${RATINGS.map(r=>`<option ${ (l.rating||"Unrated")===r?"selected":""}>${r}</option>`).join("")}</select></label>
+    </div>
+    <label>Name<input class="field" id="lf-name" required value="${esc(l.name||"")}" placeholder="Venue, festival or client name"></label>
+    <div class="grid2">
+      <label>City<input class="field" id="lf-city" value="${esc(l.city||"")}"></label>
+      <label>State<select class="field" id="lf-state"><option value="">—</option>${Object.entries(STATE_NAMES).map(([c,n])=>`<option value="${c}" ${l.stateCode===c?"selected":""}>${n}</option>`).join("")}</select></label>
+    </div>
+    <label>Contact person<input class="field" id="lf-contact" value="${esc(l.contactName||"")}" placeholder="Jane Smith, talent buyer"></label>
+    <div class="grid2">
+      <label>Emails (comma between)<input class="field" id="lf-emails" value="${esc((l.emails||[]).join(", "))}"></label>
+      <label>Phones (comma between)<input class="field" id="lf-phones" value="${esc((l.phones||[]).join(", "))}"></label>
+    </div>
+    <div class="grid2">
+      <label>Website<input class="field" id="lf-web" type="url" value="${esc(l.website||"")}"></label>
+      <label>Seated capacity<input class="field" id="lf-seats" type="number" min="0" value="${esc(l.seats??"")}"></label>
+    </div>
+    <label>Submission link<input class="field" id="lf-sub" type="url" value="${esc(l.submissionUrl||"")}"></label>
+    <div class="grid2" id="lf-fest">
+      <label>Festival dates<input class="field" id="lf-edates" value="${esc(l.eventDates||"")}" placeholder="June 12–14, 2027"></label>
+      <label>Submission deadline<input class="field" id="lf-deadline" type="date" value="${esc(l.deadline||"")}"></label>
+    </div>
+    <label>Research / background<textarea class="field" id="lf-fit" style="min-height:120px">${esc(l.fitText||"")}</textarea></label>
+    <div class="foot">${!isNew?`<button class="btn danger" type="button" id="lf-del" style="margin-right:auto">Delete lead</button>`:""}<button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">${isNew?"Save":"Save"}</button></div>
+  </form>`, kindOf(l));
+  const fest = () => { $("#lf-fest").hidden = $("#lf-kind").value!=="festival"; $(".sheet").className = "sheet k-"+$("#lf-kind").value; };
+  fest(); $("#lf-kind").addEventListener("change", fest);
+  const split = s => s.split(/[,;\n]/).map(x=>x.trim()).filter(Boolean);
+  $("#lead-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const sc = $("#lf-state").value;
+    const data = { kind: $("#lf-kind").value, rating: $("#lf-rating").value, name: $("#lf-name").value.trim(), city: $("#lf-city").value.trim(),
+      stateCode: sc || null, state: STATE_NAMES[sc] || null, contactName: $("#lf-contact").value.trim(),
+      emails: split($("#lf-emails").value), phones: split($("#lf-phones").value), website: $("#lf-web").value.trim() || null,
+      seats: $("#lf-seats").value ? Number($("#lf-seats").value) : null, submissionUrl: $("#lf-sub").value.trim() || null,
+      eventDates: $("#lf-edates").value.trim() || null, deadline: $("#lf-deadline").value || null, fitText: $("#lf-fit").value,
+      updatedAt: new Date().toISOString() };
+    if (!data.name) return;
+    if (isNew) {
+      const ref = S.db.collection("leads").doc();
+      Object.assign(data, {status:"Not contacted", followUp:null, origin:"Added by hand", createdAt:new Date().toISOString(), links:[]});
+      if (await write(() => ref.set(data), "Saved")) { closeSheet(); openLead(ref.id); }
+    } else if (await write(() => leadRef(l.id).update(data), "Saved")) closeSheet();
+  });
+  if (!isNew) $("#lf-del").addEventListener("click", ev => {
+    const b = ev.currentTarget;
+    if (b.dataset.armed) { write(() => leadRef(l.id).delete(), "Lead deleted").then(ok => { if (ok){ closeSheet(); S.selected=null; document.body.classList.remove("show-detail"); render(); } }); }
+    else { b.dataset.armed = "1"; b.textContent = "Tap again to delete"; }
+  });
+}
+
+const CHECKS = [["contract","Contract signed"],["promo","Promo / poster sent"],["sound","Sound and backline confirmed"],["lodging","Lodging booked"],["directions","Directions and parking checked"],["setlist","Set list or requests confirmed"]];
+const money = v => { const m = String(v||"").replace(/,/g,"").match(/\d+(?:\.\d+)?/); return m ? Number(m[0]) : null; };
+const usd = n => "$" + Math.round(n).toLocaleString();
+const fileUrl = f => (S.signed && S.signed[f.id]) || "";
+async function shrinkImage(file){
+  if (!/^image\//.test(file.type) || file.type==="image/gif") return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width*k); c.height = Math.round(bmp.height*k);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+    return blob || file;
+  } catch { return file; }
+}
+function openEventForm(ev, preset={}){
+  const isNew = !ev; ev = ev || {date: preset.date || todayISO(), status:"Hold", leadId: preset.leadId || ""};
+  const evId = isNew ? S.db.collection("events").doc().id : ev.id;
+  const l0 = S.leads.get(ev.leadId);
+  const opts = [...S.leads.values()].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const kind = ev.kind || kindOf(l0) || "venue";
+  const ck = {...(ev.checklist||{})};
+  let files = [...(ev.files||[])];
+  const stOpts = ["Hold","Confirmed","Cancelled"]; if (ev.status && !stOpts.includes(ev.status)) stOpts.splice(2,0,ev.status);
+  const has = (...k) => k.some(x => ev[x]);
+  const doneCount = CHECKS.filter(([k])=>ck[k]).length;
+  sheet(`${head(isNew?"Add gig":"Edit gig")}
+  <form class="sb" id="ev-form">
+    <label>Where<input class="field" id="ev-lead" list="ev-leads" value="${esc(l0?l0.name+" — "+place(l0):(ev.title||""))}" placeholder="Pick a venue or festival, or type any place">
+      <datalist id="ev-leads">${opts.map(o=>`<option value="${esc(o.name+" — "+place(o))}">`).join("")}</datalist></label>
+    <div class="grid2">
+      <label>Date<input class="field" id="ev-date" type="date" required value="${esc(ev.date)}"></label>
+      <label>Show time<input class="field" id="ev-time" type="time" value="${esc(ev.time||"")}"></label>
+    </div>
+    <div class="grid2">
+      <label>Status<select class="field" id="ev-status">${stOpts.map(x=>`<option ${(ev.status||"Hold")===x?"selected":""}>${x}</option>`).join("")}</select></label>
+      <label>Color<select class="field" id="ev-kind">${Object.entries(KINDS).map(([v,t])=>`<option value="${v}" ${kind===v?"selected":""}>${t}</option>`).join("")}</select></label>
+    </div>
+    <details class="grp" ${has("loadIn","soundcheck","doors","setLength")?"open":""}><summary>Load-in and set times</summary>
+      <div class="grid4">
+        <label>Load-in<input class="field" id="ev-loadin" type="time" value="${esc(ev.loadIn||"")}"></label>
+        <label>Soundcheck<input class="field" id="ev-sound" type="time" value="${esc(ev.soundcheck||"")}"></label>
+        <label>Doors<input class="field" id="ev-doors" type="time" value="${esc(ev.doors||"")}"></label>
+        <label>Set length<input class="field" id="ev-setlen" value="${esc(ev.setLength||"")}" placeholder="2 × 45 min"></label>
+      </div></details>
+    <details class="grp" ${has("address","lodging")?"open":""}><summary>Address and lodging</summary>
+      <label>Address<input class="field" id="ev-addr" value="${esc(ev.address||"")}" placeholder="Street, city, state"></label>
+      <div class="small" id="ev-maplink"></div>
+      <label>Lodging<textarea class="field" id="ev-lodging" style="min-height:60px" placeholder="Hotel or host home, address, confirmation number">${esc(ev.lodging||"")}</textarea></label>
+    </details>
+    <details class="grp" ${has("dayContact","dayPhone")?"open":""}><summary>Day-of contact</summary>
+      <div class="grid2">
+        <label>Name<input class="field" id="ev-dcname" value="${esc(ev.dayContact||"")}" placeholder="Who meets you at the venue"></label>
+        <label>Phone<input class="field" id="ev-dcphone" type="tel" value="${esc(ev.dayPhone||"")}"></label>
+      </div></details>
+    <details class="grp" ${has("fee","deposit")||ev.paid?"open":""}><summary>Pay</summary>
+      <div class="grid2">
+        <label>Fee or deal<input class="field" id="ev-fee" value="${esc(ev.fee||"")}" placeholder="$800, or 70% of door"></label>
+        <label>Deposit<input class="field" id="ev-deposit" value="${esc(ev.deposit||"")}" placeholder="$200"></label>
+      </div>
+      <div class="checks">
+        <label class="ck"><input type="checkbox" id="ev-deppaid" ${ev.depositPaid?"checked":""}> Deposit received</label>
+        <label class="ck"><input type="checkbox" id="ev-paid" ${ev.paid?"checked":""}> Paid in full</label>
+      </div></details>
+    <details class="grp" ${doneCount?"open":""}><summary>Advance checklist <span class="muted" id="ck-count">${doneCount}/${CHECKS.length}</span></summary>
+      <div class="checks">${CHECKS.map(([k,t])=>`<label class="ck"><input type="checkbox" data-ck="${k}" ${ck[k]?"checked":""}> ${t}</label>`).join("")}</div></details>
+    <details class="grp" ${files.length?"open":""}><summary>Contract and photos <span class="muted" id="file-count">${files.length||""}</span></summary>
+      <div class="files" id="ev-files"></div>
+      <div id="ev-upload-wrap"></div>
+    </details>
+    <label>Notes<textarea class="field" id="ev-notes" style="min-height:110px" placeholder="Anything else about this gig">${esc(ev.notes||"")}</textarea></label>
+    ${!isNew?`<a class="small" target="_blank" rel="noopener" href="${esc(gcalLink(ev))}">Add to Google Calendar</a>`:""}
+    <div class="foot">${!isNew?`<button class="btn danger" type="button" id="ev-del" style="margin-right:auto">Delete</button>`:""}${l0?`<button class="btn" type="button" id="ev-goto">Open venue</button>`:""}<button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">${isNew?"Add gig":"Save"}</button></div>
+  </form>`, kind);
+  const findLead = v => opts.find(o => (o.name+" — "+place(o))===v) || opts.find(o => o.name===v);
+  const mapRefresh = () => { const a = $("#ev-addr").value.trim(); $("#ev-maplink").innerHTML = a ? `<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a)}">Open in Maps</a>` : ""; };
+  mapRefresh(); $("#ev-addr").addEventListener("input", mapRefresh);
+  $("#ev-lead").addEventListener("change", e => { const l = findLead(e.target.value); if (l) { $("#ev-kind").value = kindOf(l); $(".sheet").className="sheet k-"+kindOf(l); if (!$("#ev-addr").value && l.locationText) { $("#ev-addr").value = l.locationText.split("\n").slice(0,3).join(", "); mapRefresh(); } } });
+  $("#ev-kind").addEventListener("change", e => $(".sheet").className = "sheet k-"+e.target.value);
+  $("#ev-form").addEventListener("change", e => { if (e.target.dataset.ck) { ck[e.target.dataset.ck] = e.target.checked; $("#ck-count").textContent = `${CHECKS.filter(([k])=>ck[k]).length}/${CHECKS.length}`; } });
+
+  const persistFiles = async () => { if (!isNew) await write(() => S.db.collection("events").doc(evId).update({files})); };
+  const renderFiles = () => {
+    const missing = files.filter(f => !(S.signed && S.signed[f.id])).map(f => f.id);
+    if (missing.length && S.assets && S.assets.signed) S.assets.signed(missing).then(m => { S.signed = {...(S.signed||{}), ...m}; if (Object.keys(m).length && $("#ev-files")) renderFiles(); });
+    $("#file-count").textContent = files.length || "";
+    $("#ev-files").innerHTML = files.map((f,i) => `<div class="file">${/^image\//.test(f.type)
+      ? `<button type="button" class="thumb" data-viewfile="${i}" aria-label="View ${esc(f.name||"photo")}"><img src="${esc(fileUrl(f))}" alt="" loading="lazy"></button>`
+      : `<button type="button" class="thumb doc" data-viewfile="${i}">PDF<br><span>${esc(f.name||"Document")}</span></button>`}
+      <button type="button" class="copy" data-rmfile="${i}">Remove</button></div>`).join("") || `<p class="small muted" style="margin:0">No files yet.</p>`;
+  };
+  renderFiles();
+  $("#ev-upload-wrap").innerHTML = S.assets
+    ? `<label class="btn" style="align-self:flex-start;flex-direction:row;color:var(--ink);font-size:14px">Take photo or add file<input type="file" id="ev-file" accept="image/*,application/pdf" hidden></label><span class="small muted" id="ev-upmsg"></span>`
+    : `<p class="small muted">Sign in to add photos.</p>`;
+  $("#ev-file")?.addEventListener("change", async e => {
+    const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+    const msg = $("#ev-upmsg"); msg.textContent = "Uploading…";
+    try {
+      const blob = await shrinkImage(file);
+      const type = blob.type || file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "");
+      const r = await S.assets.upload(blob, type ? {type} : undefined);
+      S.signed = {...(S.signed||{}), [r.id]: r.url};
+      files.push({id:r.id, type:r.contentType, name:file.name, at:new Date().toISOString()});
+      renderFiles(); await persistFiles(); msg.textContent = isNew ? "Added. Tap Add gig to keep it." : "Saved to this gig.";
+    } catch (err) {
+      msg.textContent = err?.code==="too_large" ? "That file is over 20 MB." : err?.code==="unsupported_type" ? "Use a photo (JPG or PNG) or a PDF." : "Upload failed. Try again.";
+      console.error(err);
+    }
+  });
+  $("#ev-files").addEventListener("click", async e => {
+    const v = e.target.closest("[data-viewfile]"); if (v) { openViewer(files, +v.dataset.viewfile); return; }
+    const b = e.target.closest("[data-rmfile]"); if (!b) return;
+    if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Tap again"; return; }
+    const f = files[+b.dataset.rmfile];
+    try { if (S.assets) await S.assets.delete(f.id); } catch (err) { console.error(err); }
+    files.splice(+b.dataset.rmfile, 1); renderFiles(); await persistFiles();
+  });
+
+  $("#ev-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const where = $("#ev-lead").value.trim(), l = findLead(where), v = id => $(id).value.trim();
+    const data = { leadId: l ? l.id : null, title: l ? "" : where, date: $("#ev-date").value, time: $("#ev-time").value || null,
+      kind: $("#ev-kind").value, status: $("#ev-status").value,
+      loadIn: v("#ev-loadin"), soundcheck: v("#ev-sound"), doors: v("#ev-doors"), setLength: v("#ev-setlen"),
+      address: v("#ev-addr"), lodging: $("#ev-lodging").value, dayContact: v("#ev-dcname"), dayPhone: v("#ev-dcphone"),
+      fee: v("#ev-fee"), deposit: v("#ev-deposit"), depositPaid: $("#ev-deppaid").checked, paid: $("#ev-paid").checked,
+      checklist: ck, files, notes: $("#ev-notes").value, updatedAt: new Date().toISOString() };
+    if (!data.date) return;
+    const ref = S.db.collection("events").doc(evId);
+    const ok = await write(() => isNew ? ref.set(data) : ref.update(data), isNew?"Gig added":"Saved");
+    if (!ok) return;
+    if (l) {
+      const was = ev.status;
+      if (isNew || was !== data.status) write(() => logActivity(l.id, "note", `Gig ${data.status.toLowerCase()}: ${fmtDate(data.date)}${data.time?" at "+fmtTime(data.time):""}`));
+      if (["Confirmed","Contract sent","Contract signed"].includes(data.status) && l.status!=="Booked") setStatus(l, "Booked");
+      else if (data.status==="Hold" && ["Not contacted","Contacted","Follow up"].includes(l.status||"Not contacted")) setStatus(l, "In talks");
+    }
+    closeSheet();
+  });
+  if (!isNew) $("#ev-del").addEventListener("click", e2 => {
+    const b = e2.currentTarget;
+    if (b.dataset.armed) write(() => S.db.collection("events").doc(ev.id).delete(), "Gig deleted").then(ok => ok && closeSheet());
+    else { b.dataset.armed="1"; b.textContent="Tap again to delete"; }
+  });
+  if (l0) $("#ev-goto").addEventListener("click", () => { closeSheet(); openLead(l0.id); });
+}
+function gcalLink(ev){
+  const l = S.leads.get(ev.leadId), d = ev.date.replace(/-/g,"");
+  let dates;
+  if (ev.time) { const st = d+"T"+ev.time.replace(":","")+"00"; const [h,m]=ev.time.split(":").map(Number); const end = new Date(2000,0,1,h+2,m); dates = st+"/"+d+"T"+String(end.getHours()).padStart(2,"0")+String(end.getMinutes()).padStart(2,"0")+"00"; }
+  else { const n = parseISO(ev.date); n.setDate(n.getDate()+1); dates = d+"/"+iso(n).replace(/-/g,""); }
+  const q = new URLSearchParams({action:"TEMPLATE", text:`${ev.status==="Hold"?"HOLD: ":""}Tim & Myles — ${ev.title||l?.name||"Show"}`, dates, details:[ev.deal&&ev.deal!=="TBD"?ev.deal:"", ev.fee?"$"+ev.fee:"", ev.notes||""].filter(Boolean).join("\n"), location: l? place(l):""});
+  return "https://calendar.google.com/calendar/render?"+q;
+}
+
+function openTemplate(t){
+  const isNew = !t; t = t || {name:"", subject:"", body:"Hi {{first_name}},\n\n\n\n{{signature}}"};
+  sheet(`${head(isNew?"New template":"Edit template")}
+  <form class="sb" id="tpl-form">
+    <label>Name<input class="field" id="tp-name" required value="${esc(t.name)}" placeholder="First inquiry"></label>
+    <label>Subject<input class="field" id="tp-subj" value="${esc(t.subject)}"></label>
+    <label>Message<textarea class="field" id="tp-body">${esc(t.body)}</textarea></label>
+    <div class="foot">${!isNew?`<button class="btn danger" type="button" id="tp-del" style="margin-right:auto">Delete</button>`:""}<button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">Save template</button></div>
+  </form>`);
+  $("#tpl-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const data = {name:$("#tp-name").value.trim(), subject:$("#tp-subj").value, body:$("#tp-body").value, order: t.order ?? 50};
+    const ref = isNew ? S.db.collection("templates").doc() : S.db.collection("templates").doc(t.id);
+    if (await write(() => ref.set(data), "Template saved")) closeSheet();
+  });
+  if (!isNew) $("#tp-del").addEventListener("click", e2 => {
+    const b = e2.currentTarget;
+    if (b.dataset.armed) write(() => S.db.collection("templates").doc(t.id).delete(), "Template deleted").then(ok => ok && closeSheet());
+    else { b.dataset.armed="1"; b.textContent="Tap again to delete"; }
+  });
+}
+
+function openPrefs(){
+  const p = S.prefs;
+  sheet(`${head("My email")}
+  <form class="sb" id="pref-form">
+    <div class="note">Emails are written here and sent from your own email account, so replies land in your normal inbox. These settings are yours alone; Myles can set his own.</div>
+    <label>I send email with<select class="field" id="pf-service">${Object.entries({gmail:"Gmail or Google Workspace", outlook:"Outlook / Microsoft 365 (work)", outlookcom:"Outlook.com / Hotmail", mailto:"The mail app on this device"}).map(([v,t])=>`<option value="${v}" ${p.service===v?"selected":""}>${t}</option>`).join("")}</select></label>
+    <label>My email address<input class="field" id="pf-from" type="email" value="${esc(p.from||"")}"></label>
+    <label>Signature<textarea class="field" id="pf-sig" style="min-height:110px">${esc(p.signature||"")}</textarea></label>
+    <div class="foot"><button class="btn danger" type="button" id="pf-signout" style="margin-right:auto">Sign out</button><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>`);
+  $("#pf-signout").addEventListener("click", () => window.__signOut && window.__signOut());
+  $("#pref-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    Object.assign(S.prefs, {service:$("#pf-service").value, from:$("#pf-from").value.trim(), signature:$("#pf-sig").value});
+    try { localStorage.setItem("tm-prefs", JSON.stringify(S.prefs)); } catch {}
+    if (S.me && S.db) await write(() => S.db.doc(`data/users/${S.me}/prefs`).set({...S.prefs}));
+    toast("Saved"); closeSheet();
+  });
+}
+
+/* ---------- Events ---------- */
+document.addEventListener("click", e => {
+  const t = e.target;
+  if (t.closest("[data-close]") || t.id==="scrim") { closeSheet(); return; }
+  const copy = t.closest("[data-copy]"); if (copy) { copyText(copy.dataset.copy, copy); return; }
+  const evb = t.closest("[data-event]"); if (evb) { e.stopPropagation(); const ev = S.events.find(x=>x.id===evb.dataset.event); if (ev) openEventForm(ev); return; }
+  const op = t.closest("[data-open]"); if (op) { openLead(op.dataset.open); return; }
+  const kb = t.closest("[data-kind]"); if (kb) { S.f.kind = kb.dataset.kind; saveFilters(); render(); return; }
+  const sf = t.closest("[data-status-filter]"); if (sf) { Object.assign(S.f, {status:sf.dataset.statusFilter, kind:"all", state:"", rating:"", q:""}); saveFilters(); S.selected=null; document.body.classList.remove("show-detail"); go("leads"); return; }
+  const stRow = t.closest("[data-state]"); if (stRow) { Object.assign(S.f, {state:stRow.dataset.state, status:"", rating:"", q:""}); saveFilters(); S.selected=null; document.body.classList.remove("show-detail"); go("leads"); return; }
+  const day = t.closest("[data-day]"); if (day) { openEventForm(null, {date: day.dataset.day}); return; }
+  const cal = t.closest("[data-cal]"); if (cal) { const n = +cal.dataset.cal; S.calMonth = n===0 ? null : new Date(S.calMonth.getFullYear(), S.calMonth.getMonth()+n, 1); render(); return; }
+  const tpl = t.closest("[data-tpl]"); if (tpl) { openTemplate(S.templates.find(x=>x.id===tpl.dataset.tpl)); return; }
+  const delA = t.closest("[data-del-act]"); if (delA) { if (delA.dataset.armed) write(() => S.db.collection("activity").doc(delA.dataset.delAct).delete(), "Entry deleted"); else { delA.dataset.armed="1"; delA.textContent="Tap again"; } return; }
+  const nav = t.closest("#nav a"); if (nav) { e.preventDefault(); if (blockIfDirty()) return; if (nav.dataset.view==="leads") document.body.classList.remove("show-detail"); go(nav.dataset.view); return; }
+  const l = S.leads.get(S.selected);
+  switch (t.id) {
+    case "btn-new": case "btn-new2": openLeadForm(null); break;
+    case "btn-prefs": openPrefs(); break;
+    case "btn-export": openExport(); break;
+    case "btn-back": goBack(); break;
+    case "save-all": saveAll(); break;
+    case "discard": S.draft = null; render(); toast("Changes discarded"); break;
+    case "f-clear": e.preventDefault(); S.f = {kind:"all", q:"", state:"", status:"", rating:"", email:false}; saveFilters(); render(); break;
+    case "act-email": if (l) openEmail(l); break;
+    case "act-note": $("#note-body")?.focus(); break;
+    case "act-date": if (l) openEventForm(null, {leadId:l.id}); break;
+    case "act-edit": if (l) openLeadForm(l); break;
+    case "cal-add": openEventForm(null); break;
+    case "tpl-add": openTemplate(null); break;
+  }
+});
+document.addEventListener("keydown", e => {
+  if (e.key==="Escape" && $("#viewer")) { closeViewer(); return; }
+  if (e.key==="Escape" && $("#scrim")) closeSheet();
+  if ($("#viewer") && (e.key==="ArrowRight" || e.key==="ArrowLeft")) $(e.key==="ArrowRight" ? "#vw-next" : "#vw-prev")?.click();
+  if (e.key==="Enter" && e.target.matches(".row[data-open]")) openLead(e.target.dataset.open);
+});
+let qTimer;
+document.addEventListener("input", e => {
+  if (e.target.id==="note-body") { const l = S.leads.get(S.selected); if (l) { draftFor(l).noteBody = e.target.value; updateSaveBar(); } return; }
+  if (e.target.id==="d-follow") { const l = S.leads.get(S.selected); if (l) { const d = draftFor(l); d.followUp = e.target.value; d.touched.followUp = true; updateSaveBar(); } return; }
+  if (e.target.id==="f-q") { clearTimeout(qTimer); const v = e.target.value; qTimer = setTimeout(() => { S.f.q = v; saveFilters(); const pos = e.target.selectionStart; render(); const i = $("#f-q"); i.focus(); try{i.setSelectionRange(pos,pos);}catch{} }, 180); }
+});
+document.addEventListener("change", e => {
+  const id = e.target.id, l = S.leads.get(S.selected);
+  if (id==="f-state") { S.f.state = e.target.value; saveFilters(); render(); }
+  else if (id==="f-status") { S.f.status = e.target.value; saveFilters(); render(); }
+  else if (id==="f-rating") { S.f.rating = e.target.value; saveFilters(); render(); }
+  else if (id==="f-email") { S.f.email = e.target.checked; saveFilters(); render(); }
+  else if (id==="d-status" && l) { const d = draftFor(l); d.status = e.target.value; d.touched.status = true; updateSaveBar(); }
+  else if (id==="d-follow" && l) { const d = draftFor(l); d.followUp = e.target.value; d.touched.followUp = true; updateSaveBar(); }
+  else if (id==="note-kind" && l) { draftFor(l).noteKind = e.target.value; updateSaveBar(); }
+});
+document.addEventListener("submit", e => {
+  if (e.target.id !== "note-form") return;
+  e.preventDefault(); saveAll();
+});
+
+const h = location.hash.slice(1);
+if (["today","leads","calendar","money","templates","states"].includes(h)) S.view = h;
+render();
+boot();
+})();
+</script>
+
+</body>
+</html>
