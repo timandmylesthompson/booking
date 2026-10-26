@@ -624,8 +624,8 @@ function viewLeads(){
         <input type="search" id="f-q" placeholder="Search name, city, contact, notes" value="${esc(S.f.q)}" aria-label="Search leads">
         <select id="f-state" aria-label="State"><option value="">All states</option>${states.map(s=>`<option value="${s}" ${S.f.state===s?"selected":""}>${esc(STATE_NAMES[s]||s)}</option>`).join("")}</select>
         <select id="f-status" aria-label="Status"><option value="">Any status</option>${STATUSES.map(s=>`<option ${S.f.status===s?"selected":""}>${s}</option>`).join("")}</select>
-        <select id="f-rating" aria-label="Fit rating"><option value="">Any fit rating</option>${RATINGS.map(s=>`<option ${S.f.rating===s?"selected":""}>${s}</option>`).join("")}</select>
-        <select id="f-prio" aria-label="Priority"><option value="">Any priority</option>${["High","Normal","Low"].map(s=>`<option ${S.f.prio===s?"selected":""}>${s}</option>`).join("")}</select>
+        <select id="f-prio" aria-label="Priority"><option value="">Any priority</option>${["High","Normal","Low"].map(s=>`<option value="${s}" ${S.f.prio===s?"selected":""}>${s} priority</option>`).join("")}</select>
+        <select id="f-rating" aria-label="ChatGPT rating"><option value="">Any ChatGPT rating</option>${RATINGS.map(s=>`<option value="${s}" ${S.f.rating===s?"selected":""}>ChatGPT: ${s}</option>`).join("")}</select>
         <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="f-email" ${S.f.email?"checked":""} style="width:auto"> Has email</label>
       </div>
       <button class="btn" type="button" id="btn-new2" style="align-self:flex-start">+ Add ${S.f.kind==="festival"?"festival":S.f.kind==="private"?"private client":"venue"}</button>
