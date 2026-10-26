@@ -223,6 +223,9 @@ details.grp > *:not(summary){margin-top:8px}
 .exp{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
 .exp > div{flex:1;min-width:200px}
 .exp p{margin:4px 0 0}
+.agent-note{font-size:13.5px;background:var(--ks,var(--sunken));border-radius:6px;padding:7px 10px;max-width:72ch}
+.qr-box{display:flex;justify-content:center;background:#fff;border-radius:10px;padding:14px;max-width:320px;width:100%;align-self:center}
+.qr-box svg{width:100%;height:auto;display:block}
 .money-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
 .money-sum div{background:var(--surface);padding:12px 14px}
 .money-sum .big{font-family:var(--display);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -303,6 +306,7 @@ table.states tr:hover td{background:var(--sunken)}
     <a href="#leads" data-view="leads">Leads</a>
     <a href="#calendar" data-view="calendar">Calendar</a>
     <a href="#money" data-view="money">Money</a>
+    <a href="#fans" data-view="fans">Fans</a>
     <a href="#templates" data-view="templates">Email templates</a>
     <a href="#states" data-view="states">States</a>
   </nav>
@@ -335,7 +339,7 @@ const S = {
   db:null, user:null, me:null, ready:{leads:false, events:false, templates:false},
   leads:new Map(), events:[], templates:[], activity:[], activityFor:null, unsubAct:null,
   view:"today", selected:null,
-  f:{kind:"all", q:"", state:"", status:"", rating:"", email:false},
+  f:{kind:"all", q:"", state:"", status:"", rating:"", prio:"", email:false}, fans:[], fanQ:"", fanState:"",
   prefs:{service:"gmail", from:"tim@timthompsonguitar.com", signature:"Tim Thompson\nTim & Myles Thompson\nhttps://timandmylesthompson.com/"},
   calMonth:null, names:{}, draft:null, hist:[],
 };
@@ -430,6 +434,10 @@ async function boot(){
   db.collection("events").limit(1000).onSnapshot(snap => {
     S.events = snap.docs.map(d => ({id:d.id, ...d.data()}));
     S.ready.events = true; render();
+  }, e => console.error(e));
+  db.collection("fans").limit(1000).onSnapshot(snap => {
+    S.fans = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    if (S.view==="fans") render();
   }, e => console.error(e));
   db.collection("templates").limit(200).onSnapshot(snap => {
     S.templates = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b)=>(a.order??99)-(b.order??99) || String(a.name).localeCompare(b.name));
@@ -532,7 +540,7 @@ function goBack(){
 /* ---------- Routing ---------- */
 function go(view){ if (view !== S.view && S.view==="leads" && blockIfDirty()) return; pushHist(); S.view = view; if (location.hash !== "#"+view) history.replaceState(null,"","#"+view); render(); window.scrollTo(0,0); }
 function openLead(id){ if (id !== S.selected && blockIfDirty()) return; if (id !== S.selected || S.view!=="leads" || !document.body.classList.contains("show-detail")) pushHist(); S.selected = id; S.view = "leads"; document.body.classList.add("show-detail"); history.replaceState(null,"","#leads"); render(); window.scrollTo(0,0); }
-window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (["today","leads","calendar","money","templates","states"].includes(v)) { S.view=v; render(); } });
+window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (["today","leads","calendar","money","fans","templates","states"].includes(v)) { S.view=v; render(); } });
 
 function render(){
   const bb = $("#btn-back"); if (bb) bb.disabled = !S.hist.length;
@@ -545,6 +553,7 @@ function render(){
   else if (S.view==="calendar") m.innerHTML = viewCalendar();
   else if (S.view==="templates") m.innerHTML = viewTemplates();
   else if (S.view==="money") m.innerHTML = viewMoney();
+  else if (S.view==="fans") m.innerHTML = viewFans();
   else if (S.view==="states") m.innerHTML = viewStates();
 }
 function renderNoDb(){
@@ -589,6 +598,7 @@ function filtered(){
     (!f.state || l.stateCode===f.state) &&
     (!f.status || (l.status||"Not contacted")===f.status) &&
     (!f.rating || (l.rating||"Unrated")===f.rating) &&
+    (!f.prio || (l.priority||"Normal")===f.prio) &&
     (!f.email || (l.emails && l.emails.length)) &&
     (!q || [l.name,l.city,l.state,l.contactName,(l.emails||[]).join(" "),l.fitText].join(" ").toLowerCase().includes(q))
   ).sort((a,b)=> String(a.stateCode).localeCompare(String(b.stateCode)) || String(a.city).localeCompare(String(b.city)) || String(a.name).localeCompare(String(b.name)));
@@ -615,6 +625,7 @@ function viewLeads(){
         <select id="f-state" aria-label="State"><option value="">All states</option>${states.map(s=>`<option value="${s}" ${S.f.state===s?"selected":""}>${esc(STATE_NAMES[s]||s)}</option>`).join("")}</select>
         <select id="f-status" aria-label="Status"><option value="">Any status</option>${STATUSES.map(s=>`<option ${S.f.status===s?"selected":""}>${s}</option>`).join("")}</select>
         <select id="f-rating" aria-label="Fit rating"><option value="">Any fit rating</option>${RATINGS.map(s=>`<option ${S.f.rating===s?"selected":""}>${s}</option>`).join("")}</select>
+        <select id="f-prio" aria-label="Priority"><option value="">Any priority</option>${["High","Normal","Low"].map(s=>`<option ${S.f.prio===s?"selected":""}>${s}</option>`).join("")}</select>
         <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="f-email" ${S.f.email?"checked":""} style="width:auto"> Has email</label>
       </div>
       <button class="btn" type="button" id="btn-new2" style="align-self:flex-start">+ Add ${S.f.kind==="festival"?"festival":S.f.kind==="private"?"private client":"venue"}</button>
@@ -641,9 +652,10 @@ function renderDetail(){
   box.innerHTML = `
   <div class="d-head">
     <div class="d-meta"><span class="kchip"><span class="kdot"></span>${KINDS[k]}</span>
-      <span class="pill r-${esc(l.rating||"Unrated")}">${esc(l.rating||"Unrated")}</span>${l.priority==="High"?`<span class="pill">High priority</span>`:""}
+      <span class="pill r-${esc(l.rating||"Unrated")}">${esc(l.rating||"Unrated")}</span>${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
       ${l.priorityLabel && !/^(STRONG|CONDITIONAL|HOLD|HIGH PRIORITY)$/.test(l.priorityLabel)?`<span class="small muted">${esc(l.priorityLabel.toLowerCase())}</span>`:""}</div>
     <h2>${esc(l.name)}</h2>
+    ${l.agentNote?`<div class="agent-note"><b>Booking agent's take:</b> ${esc(l.agentNote)}</div>`:""}
     ${(()=>{const d=dateLabel(l);return d?`<div>${d.html}</div>`:""})()}
     <div class="muted">${esc(place(l))}${l.seats?` · <span class="mono">${l.seats}</span> seats`:""}${l.mapUrl?` · <a href="${esc(l.mapUrl)}" target="_blank" rel="noopener">Map</a>`:""}${l.website?` · <a href="${esc(l.website)}" target="_blank" rel="noopener">Website</a>`:""}</div>
     <div class="d-actions">
@@ -762,6 +774,55 @@ function viewStates(){
   <tbody>${keys.map(k=>{const r=rows[k];return `<tr data-state="${esc(k)}"><td>${esc(STATE_NAMES[k]||k)}</td><td class="n">${r.v}</td><td class="n">${r.f}</td><td class="n">${r.p}</td><td class="n">${r.reached}</td><td class="n">${r.talks}</td><td class="n">${r.booked}</td></tr>`}).join("")}</tbody></table></div>`;
 }
 
+/* ---------- Fans ---------- */
+const JOIN_URL = "https://timandmylesthompson.github.io/booking/join.html";
+async function qrMake(url){
+  if (!window.qrcode) await loadScript("https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js");
+  const q = qrcode(0, "M"); q.addData(url); q.make(); return q;
+}
+async function qrPngBlob(q){
+  const n = q.getModuleCount(), cell = 16, m = cell * 4, size = n * cell + m * 2;
+  const c = document.createElement("canvas"); c.width = c.height = size;
+  const g = c.getContext("2d"); g.fillStyle = "#ffffff"; g.fillRect(0, 0, size, size); g.fillStyle = "#000000";
+  for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) g.fillRect(m + k * cell, m + r * cell, cell, cell);
+  return await new Promise(res => c.toBlob(res, "image/png"));
+}
+async function showQR(url, title, sub, filename){
+  sheet(`${head(esc(title))}
+  <div class="sb">
+    <p class="small muted" style="margin:0">${esc(sub)}</p>
+    <div class="qr-box" id="qr-box"><span class="muted small">Making the code…</span></div>
+    <div class="copyline" style="justify-content:center"><span class="mono small" style="overflow-wrap:anywhere">${esc(url)}</span><button class="copy" type="button" data-copy="${esc(url)}">Copy link</button></div>
+    <div class="note">Show this on your phone at the merch table, or save the image and print it. Mention it from the stage: "Scan this and we'll tell you next time we're back."</div>
+    <div class="foot">${S.downloads?`<button class="btn" type="button" id="qr-save">Save QR image</button>`:""}<button class="btn primary" type="button" data-close>Done</button></div>
+  </div>`);
+  try {
+    const q = await qrMake(url);
+    $("#qr-box").innerHTML = q.createSvgTag({cellSize: 8, margin: 2, scalable: true});
+    $("#qr-save")?.addEventListener("click", async () => { const b = await qrPngBlob(q); await saveFile(filename || "TimMyles-signup-QR.png", b); });
+  } catch (e) { $("#qr-box").innerHTML = `<span class="small muted">Couldn't make the QR code. Use the link instead.</span>`; console.error(e); }
+}
+function fansNear(st, city){
+  if (!st) return [];
+  const c = (city||"").trim().toLowerCase();
+  return S.fans.filter(f => f.stateCode === st).sort((a,b) => ((b.city||"").toLowerCase()===c) - ((a.city||"").toLowerCase()===c) || String(a.name).localeCompare(String(b.name)));
+}
+function viewFans(){
+  const q = (S.fanQ||"").toLowerCase(), st = S.fanState||"";
+  const fans = [...S.fans].sort((a,b)=>String(b.at||"").localeCompare(String(a.at||"")));
+  const shown = fans.filter(f => (!st || f.stateCode===st) && (!q || [f.name,f.email,f.city,f.showName].join(" ").toLowerCase().includes(q)));
+  const byState = {}; fans.forEach(f => byState[f.stateCode||"—"] = (byState[f.stateCode||"—"]||0)+1);
+  return `<div class="cal-head"><h2>Fans</h2><span class="muted small">${fans.length} on the list</span>
+      <button class="btn primary" type="button" data-qr="main" style="margin-left:auto">Show sign-up QR code</button></div>
+    <p class="muted small" style="max-width:70ch;margin-top:0">People join from the QR code or the link <span class="mono">${esc(JOIN_URL.replace("https://",""))}</span>. When you add a gig, its "Fans near this show" section lets you invite everyone in that state with one email.</p>
+    ${fans.length ? `<div class="kindtabs" style="margin-bottom:10px">${Object.entries(byState).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<button type="button" data-fanstate="${esc(k)}" aria-pressed="${st===k}">${esc(STATE_NAMES[k]||k)} <span class="n">${n}</span></button>`).join("")}${st?`<button type="button" data-fanstate="">All states</button>`:""}</div>
+    <input type="search" class="field" id="fan-q" placeholder="Search name, email, city or show" value="${esc(S.fanQ||"")}" style="max-width:420px;margin-bottom:10px" aria-label="Search fans">
+    <div class="tablewrap"><table class="states"><thead><tr><th>Name</th><th>Email</th><th>City</th><th>State</th><th>Joined</th><th>Where</th><th></th></tr></thead><tbody>
+    ${shown.map(f=>`<tr style="cursor:default"><td>${esc(f.name||"")}</td><td><span>${esc(f.email)}</span> <button class="copy" type="button" data-copy="${esc(f.email)}">Copy</button></td><td>${esc(f.city||"")}</td><td>${esc(f.stateCode||"")}</td><td class="mono small">${f.at?esc(fmtDate(f.at.slice(0,10))):""}</td><td class="small">${esc(f.showName||"")}</td><td><button class="copy" type="button" data-del-fan="${esc(f.id)}">Remove</button></td></tr>`).join("")}
+    </tbody></table></div>`
+    : `<div class="empty"><h3>No fans on the list yet</h3><p>Open the sign-up QR code at your next show and mention it from the stage. Each person who scans it lands here, sorted by state.</p></div>`}`;
+}
+
 /* ---------- Money ---------- */
 function viewMoney(){
   const t = todayISO();
@@ -869,12 +930,14 @@ async function exportSpreadsheet(btn){
       "When":a.at ? new Date(a.at).toLocaleString() : "", "Venue / festival":l?.name||"(deleted)", "City/State":l?place(l):"", "Kind":LOG_KINDS[a.kind]||(a.kind==="status"?"Status change":a.kind),
       "Subject":a.subject||"", "Text":a.body||""}; });
     const T = S.templates.map(t => ({"Name":t.name, "Subject":t.subject, "Message":t.body}));
+    const F = [...S.fans].sort((a,b)=>String(a.stateCode).localeCompare(String(b.stateCode))).map(f => ({"Name":f.name||"", "Email":f.email, "City":f.city||"", "State":f.stateCode||"", "Joined":f.at?f.at.slice(0,10):"", "Where they joined":f.showName||""}));
     const wb = XLSX.utils.book_new();
     const add = (rows, name, widths) => { const ws = XLSX.utils.json_to_sheet(rows.length?rows:[{"(empty)":""}]); if (widths) ws["!cols"] = widths.map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb, ws, name); };
     add(L, "Venues & festivals", [12,38,16,6,14,11,11,11,8,26,32,16,6,24,11,30,30,60,50,40,40,22,22]);
     add(G, "Gigs", [11,9,32,18,12,10]);
     add(N, "Notes & history", [20,36,18,14,30,80]);
     add(T, "Email templates", [22,40,80]);
+    add(F, "Fans", [24,32,18,6,11,36]);
     const out = XLSX.write(wb, {bookType:"xlsx", type:"array"});
     await saveFile(`Tim-Myles-booking-${stamp()}.xlsx`, new Uint8Array(out));
   } catch (e) { toast("Couldn't build the spreadsheet. Check your connection and try again."); console.error(e); }
@@ -927,8 +990,19 @@ async function importBackup(input){
     }
     return {collection:"events", id:e.id, data:d};
   });
+  // Keep what you've done in the app: status, follow-up, last contact and your own notes win over the file.
+  const KEEP = ["status","followUp","lastContact","myNotes"];
+  msg.textContent = "Checking what's already in the app…";
+  const existing = {};
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await window.__sb.from("docs").select("id,data").eq("collection","leads").range(from, from + 999);
+    if (error) { msg.textContent = "Couldn't read the current list: " + error.message; return; }
+    data.forEach(r => existing[r.id] = r.data);
+    if (data.length < 1000) break;
+  }
+  const mergeLead = l => { const d = strip(l), cur = existing[l.id]; if (cur) KEEP.forEach(k => { if (cur[k] != null && cur[k] !== "" && cur[k] !== "Not contacted") d[k] = cur[k]; }); return d; };
   const rows = [
-    ...b.leads.map(l => ({collection:"leads", id:l.id, data:strip(l)})),
+    ...b.leads.map(l => ({collection:"leads", id:l.id, data:mergeLead(l)})),
     ...events,
     ...(b.templates||[]).map(t => ({collection:"templates", id:t.id, data:strip(t)})),
     ...(b.activity||[]).map(a => ({collection:"activity", id:a.id, data:strip(a)})),
@@ -1157,6 +1231,9 @@ function openEventForm(ev, preset={}){
       <div class="files" id="ev-files"></div>
       <div id="ev-upload-wrap"></div>
     </details>
+    <details class="grp" id="ev-fans-grp"><summary>Fans near this show <span class="muted" id="fan-count"></span></summary>
+      <div id="ev-fans"></div>
+    </details>
     <label>Notes<textarea class="field" id="ev-notes" style="min-height:110px" placeholder="Anything else about this gig">${esc(ev.notes||"")}</textarea></label>
     ${!isNew?`<a class="small" target="_blank" rel="noopener" href="${esc(gcalLink(ev))}">Add to Google Calendar</a>`:""}
     <div class="foot">${!isNew?`<button class="btn danger" type="button" id="ev-del" style="margin-right:auto">Delete</button>`:""}${l0?`<button class="btn" type="button" id="ev-goto">Open venue</button>`:""}<button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">${isNew?"Add gig":"Save"}</button></div>
@@ -1166,6 +1243,36 @@ function openEventForm(ev, preset={}){
   mapRefresh(); $("#ev-addr").addEventListener("input", mapRefresh);
   $("#ev-lead").addEventListener("change", e => { const l = findLead(e.target.value); if (l) { $("#ev-kind").value = kindOf(l); $(".sheet").className="sheet k-"+kindOf(l); if (!$("#ev-addr").value && l.locationText) { $("#ev-addr").value = l.locationText.split("\n").slice(0,3).join(", "); mapRefresh(); } } });
   $("#ev-kind").addEventListener("change", e => $(".sheet").className = "sheet k-"+e.target.value);
+  const gigPlace = () => { const l = findLead($("#ev-lead").value.trim()); const a = $("#ev-addr").value;
+    const st = l?.stateCode || (a.match(/,\s*([A-Z]{2})\b(?:\s+\d{5})?/)||[])[1] || "";
+    const city = l?.city || (a.split(",").slice(-2,-1)[0]||"").trim();
+    return {l, st, city, where: l ? l.name : ($("#ev-lead").value.trim() || "our show")}; };
+  const fansRefresh = () => {
+    const {st, city} = gigPlace(), near = fansNear(st, city);
+    $("#fan-count").textContent = st ? `${near.length} in ${STATE_NAMES[st]||st}` : "";
+    $("#ev-fans").innerHTML = (!st ? `<p class="small muted" style="margin:0">Pick a venue or add an address with a state to see fans nearby.</p>`
+      : near.length ? `<p class="small" style="margin:0">${near.slice(0,8).map(f=>esc(f.name||f.email)+(f.city?` (${esc(f.city)})`:"")).join(", ")}${near.length>8?` and ${near.length-8} more`:""}</p>
+        <div class="sendbar"><a class="btn primary" id="ev-invite" target="_blank" rel="noopener" href="#">Invite them by email</a><span class="small muted">Opens your email with everyone in BCC, so they can't see each other.</span></div>`
+      : `<p class="small muted" style="margin:0">No fans in ${esc(STATE_NAMES[st]||st)} yet. Show the QR code at this gig to start.</p>`)
+      + `<button class="btn sm" type="button" id="ev-qr" style="align-self:flex-start">QR code for this show</button>`;
+    $("#ev-invite")?.addEventListener("click", e => {
+      const p = gigPlace(), d = $("#ev-date").value, t = $("#ev-time").value;
+      const bcc = fansNear(p.st, p.city).map(f=>f.email).join(",");
+      const subj = `We're playing ${p.city || STATE_NAMES[p.st] || "near you"} on ${d?fmtDate(d):"a new date"}`;
+      const body = `Hi friends,\n\nWe're coming back your way: ${p.where}${p.city?`, ${p.city}`:""}, on ${d?parseISO(d).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}):"(date)"}${t?` at ${fmtTime(t)}`:""}.\n\nWe'd love to see you there, and bring a friend who'd enjoy it.\n\n${S.prefs.signature||"Tim & Myles"}\n\nYou're getting this because you joined our list at a show. Reply "unsubscribe" and we'll take you off.`;
+      const enc = encodeURIComponent, au = S.prefs.from ? `&authuser=${enc(S.prefs.from)}` : "";
+      e.currentTarget.href = S.prefs.service === "gmail" ? `https://mail.google.com/mail/?view=cm&fs=1${au}&bcc=${enc(bcc)}&su=${enc(subj)}&body=${enc(body)}`
+        : `mailto:?bcc=${encodeURI(bcc)}&subject=${enc(subj)}&body=${enc(body)}`;
+    });
+    $("#ev-qr").addEventListener("click", () => {
+      const p = gigPlace(), d = $("#ev-date").value;
+      const at = [p.where, d ? fmtDate(d) : ""].filter(Boolean).join(", ");
+      const url = `${JOIN_URL}?show=${encodeURIComponent(evId)}&at=${encodeURIComponent(at)}${p.st?`&st=${p.st}`:""}${p.city?`&city=${encodeURIComponent(p.city)}`:""}`;
+      const keep = { lead: $("#ev-lead").value };
+      showQR(url, "Sign-up QR for this show", `Fans who scan this are tagged with ${at || "this show"}.`, `TimMyles-QR-${(d||"show")}.png`);
+    });
+  };
+  fansRefresh(); $("#ev-lead").addEventListener("change", fansRefresh); $("#ev-addr").addEventListener("change", fansRefresh);
   $("#ev-form").addEventListener("change", e => { if (e.target.dataset.ck) { ck[e.target.dataset.ck] = e.target.checked; $("#ck-count").textContent = `${CHECKS.filter(([k])=>ck[k]).length}/${CHECKS.length}`; } });
 
   const persistFiles = async () => { if (!isNew) await write(() => S.db.collection("events").doc(evId).update({files})); };
@@ -1297,6 +1404,9 @@ document.addEventListener("click", e => {
   const stRow = t.closest("[data-state]"); if (stRow) { Object.assign(S.f, {state:stRow.dataset.state, status:"", rating:"", q:""}); saveFilters(); S.selected=null; document.body.classList.remove("show-detail"); go("leads"); return; }
   const day = t.closest("[data-day]"); if (day) { openEventForm(null, {date: day.dataset.day}); return; }
   const cal = t.closest("[data-cal]"); if (cal) { const n = +cal.dataset.cal; S.calMonth = n===0 ? null : new Date(S.calMonth.getFullYear(), S.calMonth.getMonth()+n, 1); render(); return; }
+  const qrb = t.closest("[data-qr]"); if (qrb) { showQR(JOIN_URL, "Fan sign-up QR code", "Anyone who scans this can join your list. They're added to Fans, sorted by state."); return; }
+  const fst = t.closest("[data-fanstate]"); if (fst) { S.fanState = fst.dataset.fanstate; render(); return; }
+  const dfan = t.closest("[data-del-fan]"); if (dfan) { if (dfan.dataset.armed) write(() => S.db.collection("fans").doc(dfan.dataset.delFan).delete(), "Removed from the list"); else { dfan.dataset.armed="1"; dfan.textContent="Tap again"; } return; }
   const tpl = t.closest("[data-tpl]"); if (tpl) { openTemplate(S.templates.find(x=>x.id===tpl.dataset.tpl)); return; }
   const delA = t.closest("[data-del-act]"); if (delA) { if (delA.dataset.armed) write(() => S.db.collection("activity").doc(delA.dataset.delAct).delete(), "Entry deleted"); else { delA.dataset.armed="1"; delA.textContent="Tap again"; } return; }
   const nav = t.closest("#nav a"); if (nav) { e.preventDefault(); if (blockIfDirty()) return; if (nav.dataset.view==="leads") document.body.classList.remove("show-detail"); go(nav.dataset.view); return; }
@@ -1308,7 +1418,7 @@ document.addEventListener("click", e => {
     case "btn-back": goBack(); break;
     case "save-all": saveAll(); break;
     case "discard": S.draft = null; render(); toast("Changes discarded"); break;
-    case "f-clear": e.preventDefault(); S.f = {kind:"all", q:"", state:"", status:"", rating:"", email:false}; saveFilters(); render(); break;
+    case "f-clear": e.preventDefault(); S.f = {kind:"all", q:"", state:"", status:"", rating:"", prio:"", email:false}; saveFilters(); render(); break;
     case "act-email": if (l) openEmail(l); break;
     case "act-note": $("#note-body")?.focus(); break;
     case "act-date": if (l) openEventForm(null, {leadId:l.id}); break;
@@ -1325,6 +1435,7 @@ document.addEventListener("keydown", e => {
 });
 let qTimer;
 document.addEventListener("input", e => {
+  if (e.target.id==="fan-q") { clearTimeout(qTimer); const v = e.target.value; qTimer = setTimeout(() => { S.fanQ = v; render(); const i = $("#fan-q"); i.focus(); try{i.setSelectionRange(v.length,v.length);}catch{} }, 200); return; }
   if (e.target.id==="note-body") { const l = S.leads.get(S.selected); if (l) { draftFor(l).noteBody = e.target.value; updateSaveBar(); } return; }
   if (e.target.id==="d-follow") { const l = S.leads.get(S.selected); if (l) { const d = draftFor(l); d.followUp = e.target.value; d.touched.followUp = true; updateSaveBar(); } return; }
   if (e.target.id==="f-q") { clearTimeout(qTimer); const v = e.target.value; qTimer = setTimeout(() => { S.f.q = v; saveFilters(); const pos = e.target.selectionStart; render(); const i = $("#f-q"); i.focus(); try{i.setSelectionRange(pos,pos);}catch{} }, 180); }
@@ -1334,6 +1445,7 @@ document.addEventListener("change", e => {
   if (id==="f-state") { S.f.state = e.target.value; saveFilters(); render(); }
   else if (id==="f-status") { S.f.status = e.target.value; saveFilters(); render(); }
   else if (id==="f-rating") { S.f.rating = e.target.value; saveFilters(); render(); }
+  else if (id==="f-prio") { S.f.prio = e.target.value; saveFilters(); render(); }
   else if (id==="f-email") { S.f.email = e.target.checked; saveFilters(); render(); }
   else if (id==="d-status" && l) { const d = draftFor(l); d.status = e.target.value; d.touched.status = true; updateSaveBar(); }
   else if (id==="d-follow" && l) { const d = draftFor(l); d.followUp = e.target.value; d.touched.followUp = true; updateSaveBar(); }
@@ -1345,7 +1457,7 @@ document.addEventListener("submit", e => {
 });
 
 const h = location.hash.slice(1);
-if (["today","leads","calendar","money","templates","states"].includes(h)) S.view = h;
+if (["today","leads","calendar","money","fans","templates","states"].includes(h)) S.view = h;
 render();
 boot();
 })();

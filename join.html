@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Join the Tim &amp; Myles Thompson list</title>
+<meta name="description" content="Get an email when Tim & Myles Thompson play near you.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#f2f4f3;--surface:#fff;--line:#d5dbd8;--ink:#17201d;--muted:#5d6a65;--accent:#1f5f53;--accent-ink:#fff;--bad:#b3261e;
+  --display:"Bricolage Grotesque","Avenir Next","Segoe UI",sans-serif;--body:"Public Sans","Helvetica Neue",Arial,sans-serif;color-scheme:light;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#121816;--surface:#1a2220;--line:#2c3633;--ink:#e7ecea;--muted:#9aa7a2;--accent:#5fb8a5;--accent-ink:#0d1714;--bad:#f2847b;color-scheme:dark}}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;min-height:100vh;display:flex;align-items:center;justify-content:center;
+  padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
+.card{background:var(--surface);border:1px solid var(--line);border-top:5px solid var(--accent);border-radius:14px;padding:28px;max-width:460px;width:100%;display:flex;flex-direction:column;gap:14px}
+h1{font-family:var(--display);font-size:28px;line-height:1.1;margin:0;text-wrap:balance}
+p{margin:0;color:var(--muted)}
+form{display:flex;flex-direction:column;gap:12px}
+label{display:flex;flex-direction:column;gap:5px;font-size:14px;font-weight:500}
+input,select{font:inherit;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.consent{flex-direction:row;align-items:flex-start;gap:10px;font-weight:400;color:var(--muted)}
+.consent input{width:20px;height:20px;margin-top:2px;accent-color:var(--accent);flex:none}
+button{font:inherit;font-weight:600;font-size:17px;padding:13px;border:0;border-radius:10px;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+button:disabled{opacity:.6}
+.hp{position:absolute;left:-5000px;width:1px;height:1px;overflow:hidden}
+.msg{font-size:14px}.msg.err{color:var(--bad)}
+.done h1{font-size:26px}
+a{color:var(--accent);font-weight:600}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:420px){.row{grid-template-columns:1fr}.card{padding:22px}}
+</style>
+</head>
+<body>
+<main class="card">
+  <div id="form-view">
+    <h1>Tim &amp; Myles Thompson</h1>
+    <p style="margin-top:8px">Father-and-son harmony, guitar, mandolin and fiddle. Leave your email and we'll let you know when we're playing near you. That's all we send.</p>
+    <form id="join" novalidate style="margin-top:16px">
+      <label for="j-name">Your name<input id="j-name" autocomplete="name" maxlength="100"></label>
+      <label for="j-email">Email<input id="j-email" type="email" required autocomplete="email" maxlength="200" inputmode="email"></label>
+      <div class="row">
+        <label for="j-city">City<input id="j-city" autocomplete="address-level2" maxlength="80"></label>
+        <label for="j-state">State<select id="j-state" autocomplete="address-level1"><option value="">Choose</option></select></label>
+      </div>
+      <div class="hp" aria-hidden="true"><label for="j-website">Leave this empty<input id="j-website" tabindex="-1" autocomplete="off"></label></div>
+      <label class="consent" for="j-consent"><input type="checkbox" id="j-consent"> Yes, email me when Tim &amp; Myles play near me. I can unsubscribe anytime.</label>
+      <button type="submit" id="j-btn">Join the list</button>
+      <p class="msg" id="j-msg" role="status"></p>
+    </form>
+  </div>
+  <div id="done-view" class="done" hidden>
+    <h1>Thanks for joining!</h1>
+    <p>We'll email you when we're coming your way. In the meantime, our songs are on <a href="https://timandmyles.bandcamp.com" target="_blank" rel="noopener">Bandcamp</a>.</p>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+(() => {
+  const sb = window.supabase.createClient("https://eaguhgotxjdpkvxkuwol.supabase.co", "sb_publishable_4RfoKVn-4ITFLfP1SgGvSw_S9Wxj9Tn", { auth: { persistSession: false } });
+  const S = {AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",DC:"District of Columbia",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming",XX:"Outside the US"};
+  const sel = document.getElementById("j-state");
+  for (const [c, n] of Object.entries(S)) sel.add(new Option(n, c));
+  const params = new URLSearchParams(location.search);
+  if (params.get("st") && S[params.get("st")]) sel.value = params.get("st");
+  if (params.get("city")) document.getElementById("j-city").value = params.get("city").slice(0, 80);
+  const id = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)).replace(/-/g, "");
+  document.getElementById("join").addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = document.getElementById("j-msg"), btn = document.getElementById("j-btn");
+    const email = document.getElementById("j-email").value.trim();
+    msg.className = "msg err";
+    if (document.getElementById("j-website").value) return;            // spam bot
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.textContent = "Please enter a valid email address."; return; }
+    if (!document.getElementById("j-consent").checked) { msg.textContent = "Please tick the box so we're allowed to email you."; return; }
+    btn.disabled = true; msg.className = "msg"; msg.textContent = "Adding you…";
+    const data = { name: document.getElementById("j-name").value.trim().slice(0, 100), email: email.toLowerCase(),
+      city: document.getElementById("j-city").value.trim().slice(0, 80), stateCode: sel.value || null,
+      consent: true, show: (params.get("show") || "").slice(0, 64) || null, showName: (params.get("at") || "").slice(0, 120) || null,
+      at: new Date().toISOString(), source: "signup page" };
+    const { error } = await sb.from("docs").insert({ collection: "fans", id: id(), data });
+    btn.disabled = false;
+    if (error) { msg.className = "msg err"; msg.textContent = "That didn't go through. Please check your connection and try again."; console.error(error); return; }
+    document.getElementById("form-view").hidden = true; document.getElementById("done-view").hidden = false;
+  });
+})();
+</script>
+</body>
+</html>
