@@ -823,18 +823,35 @@ function alongLine(A,B,P){ // t = 0 at A, 1 at B; d = miles from the line
   const k=Math.cos((A.lat+B.lat)/2*Math.PI/180), ax=A.lng*k, bx=B.lng*k, px=P.lng*k;
   const dx=bx-ax, dy=B.lat-A.lat, L2=dx*dx+dy*dy||1e-9, t=((px-ax)*dx+(P.lat-A.lat)*dy)/L2;
   const ct=Math.max(0,Math.min(1,t)); return {t, d: miles(P, {lat:A.lat+ct*dy, lng:(ax+ct*dx)/k})}; }
-// Look up "City, ST". The result must be in the state typed, so a misspelling can't land in another state.
+// Look up "City, ST". Order: built-in US city list (exact), then OpenStreetMap (must be in the state typed),
+// then the closest spelling in that state. Returns {lat,lng,label[,typed]} or {suggest:[labels]} or null.
+async function loadCities(){ if (!S.cities) S.cities = fetch("us-cities.json").then(r=>r.json()).catch(()=>[]); return S.cities; }
+const normCity = x => String(x||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[.'’]/g,"").replace(/\bsaint\b/g,"st").replace(/\bmount\b/g,"mt").replace(/\bfort\b/g,"ft").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+function editDist(a,b){ const m=a.length,n=b.length, d=Array.from({length:m+1},(_,i)=>[i,...Array(n).fill(0)]); for(let j=1;j<=n;j++) d[0][j]=j;
+  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++){ d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1)); if(i>1&&j>1&&a[i-1]===b[j-2]&&a[i-2]===b[j-1]) d[i][j]=Math.min(d[i][j],d[i-2][j-2]+1); } return d[m][n]; }
+function parsePlace(q){ const parts=q.split(",").map(x=>x.trim()).filter(Boolean); const city=parts[0]||q, st=(parts[1]||"").replace(/\./g,"").trim();
+  const code = STATE_NAMES[st.toUpperCase()] ? st.toUpperCase() : Object.keys(STATE_NAMES).find(k=>STATE_NAMES[k].toLowerCase()===st.toLowerCase()) || "";
+  return {city, code}; }
 async function geocode(q){
-  const key="tm-geo2:"+q.toLowerCase().trim(); try { const c=JSON.parse(localStorage.getItem(key)||"null"); if (c) return c; } catch {}
-  const parts=q.split(",").map(x=>x.trim()).filter(Boolean); let city=parts[0]||q, st=(parts[1]||"").replace(/\./g,"");
-  const code = STATE_NAMES[st.toUpperCase()] ? st.toUpperCase() : Object.keys(STATE_NAMES).find(k=>STATE_NAMES[k].toLowerCase()===st.toLowerCase());
-  const stateName = code ? STATE_NAMES[code] : "";
-  const url = "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q="+encodeURIComponent(stateName ? `${city}, ${stateName}` : q);
-  const j = await fetch(url).then(r=>r.json());
-  const hit = j.find(x => !stateName || (x.address && x.address.state===stateName));
-  if (!hit) return null;
-  const a=hit.address||{}, place=a.city||a.town||a.village||a.hamlet||a.municipality||a.county||city;
-  const pt={lat:+hit.lat, lng:+hit.lon, label:`${place}, ${a.state||stateName}`}; try { localStorage.setItem(key, JSON.stringify(pt)); } catch {} return pt;
+  const key="tm-geo3:"+q.toLowerCase().trim(); try { const c=JSON.parse(localStorage.getItem(key)||"null"); if (c) return c; } catch {}
+  const keep = pt => { try { localStorage.setItem(key, JSON.stringify(pt)); } catch {} return pt; };
+  const {city, code} = parsePlace(q), want = normCity(city), stateName = STATE_NAMES[code]||"";
+  const list = (await loadCities()).filter(c => !code || c[1]===code);
+  if (!code) { const same = list.filter(c => normCity(c[0])===want); if (same.length>1) return {suggest: same.slice(0,6).map(c=>`${c[0]}, ${c[1]}`)}; }
+  const exact = list.find(c => normCity(c[0])===want);
+  if (exact) return keep({lat:exact[2], lng:exact[3], label:`${exact[0]}, ${STATE_NAMES[exact[1]]}`});
+  try {
+    const j = await fetch("https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q="+encodeURIComponent(stateName ? `${city}, ${stateName}` : q)).then(r=>r.json());
+    const hit = j.find(x => !stateName || (x.address && x.address.state===stateName));
+    if (hit) { const a=hit.address||{}; return keep({lat:+hit.lat, lng:+hit.lon, label:`${a.city||a.town||a.village||a.hamlet||a.municipality||city}, ${a.state||stateName}`}); }
+  } catch {}
+  // closest spellings
+  const lim = want.length<=4 ? 1 : want.length<=9 ? 2 : 3;
+  const scored = list.map(c => ({c, d: editDist(want, normCity(c[0]))})).filter(x => x.d<=lim).sort((a,b)=>a.d-b.d);
+  if (!scored.length) return null;
+  const best = scored.filter(x => x.d===scored[0].d);
+  if (best.length===1) { const c=best[0].c; return {lat:c[2], lng:c[3], label:`${c[0]}, ${STATE_NAMES[c[1]]}`, typed:city}; }
+  return {suggest: scored.slice(0,4).map(x => `${x.c[0]}, ${x.c[1]}`)};
 }
 function planTour(A,B,fixed={}){
   const T=S.tour, L=miles(A,B), maxRank=RANK[T.min]??1, n=Math.max(1,Math.min(12,+T.gigs||5));
@@ -876,7 +893,7 @@ function viewTour(){
       <label>Miles off the route<input class="field" id="tr-corr" type="number" min="10" max="300" step="5" value="${esc(T.corridor)}"></label>
     </div>
     <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tr-played" ${T.includePlayed?"checked":""} style="width:auto"> Include places we've already played (return dates)</label>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="submit">Find venues</button><button class="btn" type="button" id="tr-clear">Clear</button><span class="small muted" id="tr-msg"></span>${(T.skip||[]).length?`<span class="small muted">${T.skip.length} skipped · <a href="#" id="tr-unskip">bring them back</a></span>`:""}</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="submit">Find venues</button><button class="btn" type="button" id="tr-clear">Clear</button><span class="small muted" id="tr-msg">${esc(T.note||"")}</span>${(T.skip||[]).length?`<span class="small muted">${T.skip.length} skipped · <a href="#" id="tr-unskip">bring them back</a></span>`:""}</div>
   </form>`;
   if (!P) return `<div class="tour">${form}<p class="small muted">Tip: open any venue and tap <b>Plan a tour here</b> to use it as the turnaround.</p></div>`;
   const stops=tourStops(); let prev=P.A, total=0;
@@ -929,9 +946,15 @@ function afterTour(){
     const to=$("#tr-to").value.trim(), from=$("#tr-from").value.trim();
     Object.assign(T,{gigs:+$("#tr-gigs").value||5, min:$("#tr-min").value, corridor:+$("#tr-corr").value||75, includePlayed:$("#tr-played").checked});
     if (to!==T.to) T.toPt=null; if (from!==T.from) T.fromPt=null; T.to=to; T.from=from; saveTour();
-    msg.textContent="Finding the cities…";
+    T.note=""; msg.textContent="Finding the cities…";
     try { T.fromPt = T.fromPt?.label ? T.fromPt : await geocode(from); T.toPt = T.toPt?.label ? T.toPt : await geocode(to); } catch { msg.textContent="Couldn't look up those cities. Check your connection and try again."; return; }
-    if (!T.fromPt || !T.toPt) { T.plan=null; render(); $("#tr-msg").textContent=`Couldn't find "${!T.fromPt?from:to}". Check the spelling and use "City, ST", like Manhattan, KS.`; return; }
+    for (const [pt, typed, field] of [[T.fromPt, from, "tr-from"], [T.toPt, to, "tr-to"]]) {
+      if (pt?.suggest) { T.plan=null; if (field==="tr-from") T.fromPt=null; else T.toPt=null; render();
+        $("#tr-msg").innerHTML = `Couldn't find "${esc(typed)}". Did you mean: ${pt.suggest.map(x=>`<button type="button" class="linkish" data-tour-fix="${field}" data-place="${esc(x)}">${esc(x)}</button>`).join(" · ")}?`; return; }
+      if (!pt) { T.plan=null; render(); $("#tr-msg").textContent=`Couldn't find "${typed}". Check the spelling and use "City, ST", like Manhattan, KS.`; return; }
+    }
+    const fixes=[T.fromPt,T.toPt].filter(p=>p.typed).map(p=>`Using ${p.label} (you typed "${p.typed}").`);
+    T.note = fixes.join(" ");
     T.plan=planTour(T.fromPt,T.toPt); render();
   });
   drawTourMap();
@@ -1570,6 +1593,7 @@ document.addEventListener("click", e => {
   const tsk = t.closest("[data-tour-skip]"); if (tsk) { tourDrop(tsk.dataset.tourSkip, false); return; }
   const tplay = t.closest("[data-tour-played]"); if (tplay) { tourDrop(tplay.dataset.tourPlayed, true); return; }
   if (t.closest("#tr-clear")) { const keepFrom=S.tour.from, keepFromPt=S.tour.fromPt; S.tour={plan:null, from:keepFrom||"Nashville, TN", fromPt:keepFromPt, to:"", toPt:null, gigs:5, min:"Good fit", corridor:75, includePlayed:false, skip:[]}; saveTour(); render(); return; }
+  const tfix = t.closest("[data-tour-fix]"); if (tfix) { $("#"+tfix.dataset.tourFix).value = tfix.dataset.place; $("#tour-form").requestSubmit(); return; }
   if (t.closest("#tr-unskip")) { e.preventDefault(); S.tour.skip = []; saveTour(); tourReplan(); return; }
   const ts = t.closest("[data-tour-swap]"); if (ts) { const i = +ts.dataset.tourSwap, id = ts.dataset.lead; const sl = S.tour.plan.slots[i]; const j = sl.alts.findIndex(a=>a.l.id===id); if (j>=0) { const alt = sl.alts.splice(j,1)[0]; if (sl.pick) sl.alts.unshift(sl.pick); sl.pick = alt; } render(); return; }
   const op = t.closest("[data-open]"); if (op) { openLead(op.dataset.open); return; }
