@@ -112,7 +112,7 @@ main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px
 .tstop{display:flex;gap:10px;align-items:flex-start}
 .tnum,.tpin{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none;font-size:13px}
 .tpin{border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
-.tpin.home{background:#b3261e}
+.tpin.home{background:#b3261e}.tpin.turn{background:#444;font-size:15px}
 .talts{margin-top:4px;color:var(--muted)}
 .tbtns{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}.btn.sm{font-size:12px;padding:3px 9px}
 .linkish{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer;font:inherit}
@@ -823,10 +823,19 @@ function alongLine(A,B,P){ // t = 0 at A, 1 at B; d = miles from the line
   const k=Math.cos((A.lat+B.lat)/2*Math.PI/180), ax=A.lng*k, bx=B.lng*k, px=P.lng*k;
   const dx=bx-ax, dy=B.lat-A.lat, L2=dx*dx+dy*dy||1e-9, t=((px-ax)*dx+(P.lat-A.lat)*dy)/L2;
   const ct=Math.max(0,Math.min(1,t)); return {t, d: miles(P, {lat:A.lat+ct*dy, lng:(ax+ct*dx)/k})}; }
+// Look up "City, ST". The result must be in the state typed, so a misspelling can't land in another state.
 async function geocode(q){
-  const key="tm-geo:"+q.toLowerCase(); try { const c=JSON.parse(localStorage.getItem(key)||"null"); if (c) return c; } catch {}
-  const j = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q="+encodeURIComponent(q)).then(r=>r.json());
-  if (!j[0]) return null; const pt={lat:+j[0].lat, lng:+j[0].lon}; try { localStorage.setItem(key, JSON.stringify(pt)); } catch {} return pt; }
+  const key="tm-geo2:"+q.toLowerCase().trim(); try { const c=JSON.parse(localStorage.getItem(key)||"null"); if (c) return c; } catch {}
+  const parts=q.split(",").map(x=>x.trim()).filter(Boolean); let city=parts[0]||q, st=(parts[1]||"").replace(/\./g,"");
+  const code = STATE_NAMES[st.toUpperCase()] ? st.toUpperCase() : Object.keys(STATE_NAMES).find(k=>STATE_NAMES[k].toLowerCase()===st.toLowerCase());
+  const stateName = code ? STATE_NAMES[code] : "";
+  const url = "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q="+encodeURIComponent(stateName ? `${city}, ${stateName}` : q);
+  const j = await fetch(url).then(r=>r.json());
+  const hit = j.find(x => !stateName || (x.address && x.address.state===stateName));
+  if (!hit) return null;
+  const a=hit.address||{}, place=a.city||a.town||a.village||a.hamlet||a.municipality||a.county||city;
+  const pt={lat:+hit.lat, lng:+hit.lon, label:`${place}, ${a.state||stateName}`}; try { localStorage.setItem(key, JSON.stringify(pt)); } catch {} return pt;
+}
 function planTour(A,B,fixed={}){
   const T=S.tour, L=miles(A,B), maxRank=RANK[T.min]??1, n=Math.max(1,Math.min(12,+T.gigs||5));
   const cands=[...S.leads.values()].filter(l => kindOf(l)==="venue" && l.lat!=null && (RANK[l.vetVerdict]??9)<=maxRank && !["Declined","Do not contact"].includes(l.status)
@@ -867,7 +876,7 @@ function viewTour(){
       <label>Miles off the route<input class="field" id="tr-corr" type="number" min="10" max="300" step="5" value="${esc(T.corridor)}"></label>
     </div>
     <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tr-played" ${T.includePlayed?"checked":""} style="width:auto"> Include places we've already played (return dates)</label>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="submit">Find venues</button><span class="small muted" id="tr-msg"></span>${(T.skip||[]).length?`<span class="small muted">${T.skip.length} skipped · <a href="#" id="tr-unskip">bring them back</a></span>`:""}</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="submit">Find venues</button><button class="btn" type="button" id="tr-clear">Clear</button><span class="small muted" id="tr-msg"></span>${(T.skip||[]).length?`<span class="small muted">${T.skip.length} skipped · <a href="#" id="tr-unskip">bring them back</a></span>`:""}</div>
   </form>`;
   if (!P) return `<div class="tour">${form}<p class="small muted">Tip: open any venue and tap <b>Plan a tour here</b> to use it as the turnaround.</p></div>`;
   const stops=tourStops(); let prev=P.A, total=0;
@@ -887,6 +896,7 @@ function viewTour(){
     <div class="tour-out">
       <div id="tour-map" class="tour-map" role="img" aria-label="Map of suggested tour stops"></div>
       <section class="panel"><h2>Suggested route <small>${stops.length} of ${P.slots.length} stops · ${P.cands.length} venues in range</small></h2>
+        <p class="small" style="margin-top:10px">From <b>${esc(T.fromPt?.label||T.from)}</b>, turning around at <b>${esc(T.toPt?.label||T.to)}</b>, about ${Math.round(P.L)} miles away straight-line.</p>
         <ol class="tstops">${rows}</ol>
         <p class="small muted">About ${Math.round(total)} miles straight-line in all, ${Math.round(home)} of them home from the last stop. Real driving is longer, so check the route in Google Maps. These are suggestions only; none of these dates are booked.</p>
         <a class="btn" href="${esc(gm)}" target="_blank" rel="noopener">Open route in Google Maps</a>
@@ -906,6 +916,7 @@ async function drawTourMap(){
   const stops=tourStops(), picked=new Set(stops.map(s=>s.pick.l.id)), alts=new Set(P.slots.flatMap(s=>s.alts.map(a=>a.l.id)));
   const pop=l=>`<b>${esc(l.name)}</b><br>${esc(l.city||"")}, ${esc(l.stateCode||"")}<br>${esc(myRating(l))}<br><a href="#" data-open="${esc(l.id)}">Open venue</a>`;
   P.cands.forEach(c=>{ if (picked.has(c.l.id)) return; L.circleMarker([c.l.lat,c.l.lng],{radius:alts.has(c.l.id)?6:4, color:alts.has(c.l.id)?"#a86a00":"#8a9590", weight:1, fillOpacity:alts.has(c.l.id)?.7:.4}).bindPopup(pop(c.l)).addTo(map); });
+  L.marker([P.B.lat,P.B.lng],{icon:L.divIcon({className:"tpin turn",html:"⟲",iconSize:[26,26]})}).bindPopup("Turnaround: "+esc(S.tour.toPt?.label||S.tour.to)).addTo(map);
   const home=L.divIcon({className:"tpin home",html:"★",iconSize:[26,26]}); L.marker([P.A.lat,P.A.lng],{icon:home}).bindPopup(esc(S.tour.from)).addTo(map);
   P.slots.forEach((s,i)=>{ if(!s.pick) return; const l=s.pick.l; L.marker([l.lat,l.lng],{icon:L.divIcon({className:"tpin",html:String(i+1),iconSize:[26,26]})}).bindPopup(pop(l)).addTo(map); });
   const line=[[P.A.lat,P.A.lng], ...stops.map(s=>[s.pick.l.lat,s.pick.l.lng]), [P.A.lat,P.A.lng]];
@@ -919,8 +930,8 @@ function afterTour(){
     Object.assign(T,{gigs:+$("#tr-gigs").value||5, min:$("#tr-min").value, corridor:+$("#tr-corr").value||75, includePlayed:$("#tr-played").checked});
     if (to!==T.to) T.toPt=null; if (from!==T.from) T.fromPt=null; T.to=to; T.from=from; saveTour();
     msg.textContent="Finding the cities…";
-    try { T.fromPt = T.fromPt || await geocode(from); T.toPt = T.toPt || await geocode(to); } catch { msg.textContent="Couldn't look up those cities. Check your connection and try again."; return; }
-    if (!T.fromPt || !T.toPt) { msg.textContent=`Couldn't find ${!T.fromPt?from:to}. Try "City, ST".`; return; }
+    try { T.fromPt = T.fromPt?.label ? T.fromPt : await geocode(from); T.toPt = T.toPt?.label ? T.toPt : await geocode(to); } catch { msg.textContent="Couldn't look up those cities. Check your connection and try again."; return; }
+    if (!T.fromPt || !T.toPt) { T.plan=null; render(); $("#tr-msg").textContent=`Couldn't find "${!T.fromPt?from:to}". Check the spelling and use "City, ST", like Manhattan, KS.`; return; }
     T.plan=planTour(T.fromPt,T.toPt); render();
   });
   drawTourMap();
@@ -1555,9 +1566,10 @@ document.addEventListener("click", e => {
   if (t.closest("[data-close]") || t.id==="scrim") { closeSheet(); return; }
   const copy = t.closest("[data-copy]"); if (copy) { copyText(copy.dataset.copy, copy); return; }
   const evb = t.closest("[data-event]"); if (evb) { e.stopPropagation(); const ev = S.events.find(x=>x.id===evb.dataset.event); if (ev) openEventForm(ev); return; }
-  const tt = t.closest("[data-tour-to]"); if (tt) { const l = S.leads.get(tt.dataset.tourTo); if (l) { S.tour.to = `${l.city||""}, ${l.stateCode||""}`; S.tour.toPt = {lat:l.lat, lng:l.lng}; S.tour.plan = null; go("tour"); } return; }
+  const tt = t.closest("[data-tour-to]"); if (tt) { const l = S.leads.get(tt.dataset.tourTo); if (l) { S.tour.to = `${l.city||""}, ${l.stateCode||""}`; S.tour.toPt = {lat:l.lat, lng:l.lng, label:`${l.name}, ${l.city||""}, ${STATE_NAMES[l.stateCode]||l.stateCode||""}`}; S.tour.plan = null; go("tour"); } return; }
   const tsk = t.closest("[data-tour-skip]"); if (tsk) { tourDrop(tsk.dataset.tourSkip, false); return; }
   const tplay = t.closest("[data-tour-played]"); if (tplay) { tourDrop(tplay.dataset.tourPlayed, true); return; }
+  if (t.closest("#tr-clear")) { const keepFrom=S.tour.from, keepFromPt=S.tour.fromPt; S.tour={plan:null, from:keepFrom||"Nashville, TN", fromPt:keepFromPt, to:"", toPt:null, gigs:5, min:"Good fit", corridor:75, includePlayed:false, skip:[]}; saveTour(); render(); return; }
   if (t.closest("#tr-unskip")) { e.preventDefault(); S.tour.skip = []; saveTour(); tourReplan(); return; }
   const ts = t.closest("[data-tour-swap]"); if (ts) { const i = +ts.dataset.tourSwap, id = ts.dataset.lead; const sl = S.tour.plan.slots[i]; const j = sl.alts.findIndex(a=>a.l.id===id); if (j>=0) { const alt = sl.alts.splice(j,1)[0]; if (sl.pick) sl.alts.unshift(sl.pick); sl.pick = alt; } render(); return; }
   const op = t.closest("[data-open]"); if (op) { openLead(op.dataset.open); return; }
