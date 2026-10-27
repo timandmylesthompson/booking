@@ -833,7 +833,8 @@ function planTour(A,B){
   const nOut=Math.ceil(n/2), nBack=n-nOut, targets=[];
   for (let i=1;i<=nOut;i++) targets.push({leg:"Out", t:i/nOut});
   for (let j=1;j<=nBack;j++) targets.push({leg:"Back", t:1-(j-0.5)/(nBack+0.5)});
-  const used=new Set(), score=(c,tg)=> (RANK[c.l.vetVerdict]??3)*1.5 + (c.l.priority==="High"?-0.5:c.l.priority==="Low"?0.5:0) + Math.abs(c.t-tg.t)*L/100 + c.d/100;
+  const used=new Set(), score=(c,tg)=> (RANK[c.l.vetVerdict]??3)*1.5 + (c.l.priority==="High"?-0.5:c.l.priority==="Low"?0.5:0) + Math.abs(c.t-tg.t)*L/75 + c.d/100
+    + (miles(A,c.l) < 60 ? 4 : 0); // a room near home isn't a tour stop
   const slots=targets.map(tg => { const ranked=cands.filter(c=>!used.has(c.l.id)).sort((a,b)=>score(a,tg)-score(b,tg)); const pick=ranked[0]; if (pick) used.add(pick.l.id); return {...tg, pick, alts:ranked.slice(1,7)}; });
   // put stops in driving order: out by distance from home, back by distance from the turnaround
   const ord=s=>!s.pick?(s.leg==="Out"?s.t:2-s.t):(s.leg==="Out"?s.pick.t:2-s.pick.t);
