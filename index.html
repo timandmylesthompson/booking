@@ -114,6 +114,7 @@ main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px
 .tpin{border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .tpin.home{background:#b3261e}
 .talts{margin-top:4px;color:var(--muted)}
+.tbtns{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}.btn.sm{font-size:12px;padding:3px 9px}
 .linkish{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer;font:inherit}
 .r-Conditional{color:var(--warn);border-color:currentColor}
 .r-Hold{color:var(--muted);border-style:dashed}
@@ -684,7 +685,7 @@ function renderDetail(){
   box.innerHTML = `
   <div class="d-head">
     <div class="d-meta"><span class="kchip"><span class="kdot"></span>${KINDS[k]}</span>
-      ${ratingPill(l)}${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
+      ${ratingPill(l)}${l.playedBefore?`<span class="pill">Played here</span>`:""}${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
       ${l.priorityLabel && !/^(STRONG|CONDITIONAL|HOLD|HIGH PRIORITY)$/.test(l.priorityLabel)?`<span class="small muted">${esc(l.priorityLabel.toLowerCase())}</span>`:""}</div>
     <h2>${esc(l.name)}</h2>
     ${l.agentNote?`<div class="agent-note"><b>Booking agent's take:</b> ${esc(l.agentNote)}</div>`:""}
@@ -814,7 +815,7 @@ function viewStates(){
 const RANK = {"Great fit":0,"Good fit":1,"Possible":2,"Needs confirmation":3};
 const MINS = ["Great fit","Good fit","Possible","Needs confirmation"];
 S.tour = (()=>{ try { return {plan:null, ...JSON.parse(localStorage.getItem("tm-tour")||"{}"), plan:null}; } catch { return {plan:null}; } })();
-Object.entries({from:"Nashville, TN", to:"", gigs:5, min:"Good fit", corridor:75}).forEach(([k,v]) => { if (S.tour[k]==null || S.tour[k]==="") S.tour[k] = v; });
+Object.entries({from:"Nashville, TN", to:"", gigs:5, min:"Good fit", corridor:75, includePlayed:false, skip:[]}).forEach(([k,v]) => { if (S.tour[k]==null || S.tour[k]==="") S.tour[k] = v; });
 const saveTour = () => { try { const {plan, ...rest} = S.tour; localStorage.setItem("tm-tour", JSON.stringify(rest)); } catch {} };
 const miles = (a,b) => { const R=3958.8, r=x=>x*Math.PI/180, dLat=r(b.lat-a.lat), dLng=r(b.lng-a.lng);
   const h=Math.sin(dLat/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(h)); };
@@ -826,20 +827,32 @@ async function geocode(q){
   const key="tm-geo:"+q.toLowerCase(); try { const c=JSON.parse(localStorage.getItem(key)||"null"); if (c) return c; } catch {}
   const j = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q="+encodeURIComponent(q)).then(r=>r.json());
   if (!j[0]) return null; const pt={lat:+j[0].lat, lng:+j[0].lon}; try { localStorage.setItem(key, JSON.stringify(pt)); } catch {} return pt; }
-function planTour(A,B){
+function planTour(A,B,fixed={}){
   const T=S.tour, L=miles(A,B), maxRank=RANK[T.min]??1, n=Math.max(1,Math.min(12,+T.gigs||5));
-  const cands=[...S.leads.values()].filter(l => kindOf(l)==="venue" && l.lat!=null && (RANK[l.vetVerdict]??9)<=maxRank && !["Declined","Do not contact"].includes(l.status))
+  const cands=[...S.leads.values()].filter(l => kindOf(l)==="venue" && l.lat!=null && (RANK[l.vetVerdict]??9)<=maxRank && !["Declined","Do not contact"].includes(l.status)
+    && !(T.skip||[]).includes(l.id) && (T.includePlayed || !l.playedBefore))
     .map(l => ({l, ...alongLine(A,B,l)})).filter(c => c.t>-0.05 && c.t<1.05 && c.d<=(+T.corridor||75));
   const nOut=Math.ceil(n/2), nBack=n-nOut, targets=[];
-  for (let i=1;i<=nOut;i++) targets.push({leg:"Out", t:i/nOut});
-  for (let j=1;j<=nBack;j++) targets.push({leg:"Back", t:1-(j-0.5)/(nBack+0.5)});
+  for (let i=1;i<=nOut;i++) targets.push({leg:"Out", t:i/nOut, ti:targets.length});
+  for (let j=1;j<=nBack;j++) targets.push({leg:"Back", t:1-(j-0.5)/(nBack+0.5), ti:targets.length});
   const used=new Set(), score=(c,tg)=> (RANK[c.l.vetVerdict]??3)*1.5 + (c.l.priority==="High"?-0.5:c.l.priority==="Low"?0.5:0) + Math.abs(c.t-tg.t)*L/75 + c.d/100
     + (miles(A,c.l) < 60 ? 4 : 0); // a room near home isn't a tour stop
-  const slots=targets.map(tg => { const ranked=cands.filter(c=>!used.has(c.l.id)).sort((a,b)=>score(a,tg)-score(b,tg)); const pick=ranked[0]; if (pick) used.add(pick.l.id); return {...tg, pick, alts:ranked.slice(1,7)}; });
+  // stops you kept stay where they are
+  targets.forEach(tg => { const c = fixed[tg.ti] && cands.find(c=>c.l.id===fixed[tg.ti]); if (c) { tg.fixedPick = c; used.add(c.l.id); } });
+  const slots=targets.map(tg => { if (tg.fixedPick) { const pick=tg.fixedPick; return {...tg, pick, alts:cands.filter(c=>!used.has(c.l.id)).sort((a,b)=>score(a,tg)-score(b,tg)).slice(0,6)}; }
+    const ranked=cands.filter(c=>!used.has(c.l.id)).sort((a,b)=>score(a,tg)-score(b,tg)); const pick=ranked[0]; if (pick) used.add(pick.l.id); return {...tg, pick, alts:ranked.slice(1,7)}; });
   // put stops in driving order: out by distance from home, back by distance from the turnaround
   const ord=s=>!s.pick?(s.leg==="Out"?s.t:2-s.t):(s.leg==="Out"?s.pick.t:2-s.pick.t);
   slots.sort((a,b)=>ord(a)-ord(b));
   return {A,B,L,cands,slots};
+}
+function tourReplan(){ const P=S.tour.plan; if (!P) return render(); const fixed={}; P.slots.forEach(s=>{ if (s.pick) fixed[s.ti]=s.pick.l.id; }); S.tour.plan=planTour(P.A,P.B,fixed); render(); }
+async function tourDrop(id, played){
+  const P=S.tour.plan, l=S.leads.get(id); if (!P || !l) return;
+  if (played) { if (!(await write(() => leadRef(id).update({playedBefore:true, updatedAt:new Date().toISOString()}), `Marked: you've played ${l.name}`))) return; l.playedBefore = true; }
+  if (!played || S.tour.includePlayed) { S.tour.skip = [...new Set([...(S.tour.skip||[]), id])]; saveTour(); }
+  const fixed={}; P.slots.forEach(s=>{ if (s.pick && s.pick.l.id!==id) fixed[s.ti]=s.pick.l.id; });
+  S.tour.plan=planTour(P.A,P.B,fixed); render();
 }
 function tourStops(){ const P=S.tour.plan; if (!P) return []; return P.slots.filter(s=>s.pick); }
 function viewTour(){
@@ -853,7 +866,8 @@ function viewTour(){
       <label>Lowest rating<select class="field" id="tr-min">${MINS.map(m=>`<option ${T.min===m?"selected":""}>${m}</option>`).join("")}</select></label>
       <label>Miles off the route<input class="field" id="tr-corr" type="number" min="10" max="300" step="5" value="${esc(T.corridor)}"></label>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="submit">Find venues</button><span class="small muted" id="tr-msg"></span></div>
+    <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tr-played" ${T.includePlayed?"checked":""} style="width:auto"> Include places we've already played (return dates)</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="submit">Find venues</button><span class="small muted" id="tr-msg"></span>${(T.skip||[]).length?`<span class="small muted">${T.skip.length} skipped · <a href="#" id="tr-unskip">bring them back</a></span>`:""}</div>
   </form>`;
   if (!P) return `<div class="tour">${form}<p class="small muted">Tip: open any venue and tap <b>Plan a tour here</b> to use it as the turnaround.</p></div>`;
   const stops=tourStops(); let prev=P.A, total=0;
@@ -865,7 +879,8 @@ function viewTour(){
     return `<li class="tstop"><div class="tnum">${i+1}</div><div style="min-width:0">
       <div class="small muted">${s.leg==="Out"?"Heading out":"Heading home"} · ${Math.round(legs[k])} mi straight-line from the last stop${s.pick.d>15?` · ${Math.round(s.pick.d)} mi off the route`:""}</div>
       <a href="#" data-open="${esc(l.id)}" class="nm">${esc(l.name)}</a> ${ratingPill(l)}${l.priority==="High"?` <span class="pill">High priority</span>`:""}
-      <div class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")}${l.seats?` · ${l.seats} seats`:""}${(l.status&&l.status!=="Not contacted")?` · ${esc(l.status)}`:""}</div>
+      <div class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")}${l.seats?` · ${l.seats} seats`:""}${(l.status&&l.status!=="Not contacted")?` · ${esc(l.status)}`:""}${l.playedBefore?" · played here before":""}</div>
+      <div class="tbtns"><button type="button" class="btn sm" data-tour-skip="${esc(l.id)}">Skip</button>${l.playedBefore?"":`<button type="button" class="btn sm" data-tour-played="${esc(l.id)}">We've played here</button>`}</div>
       ${alts.length?`<div class="talts small">Or: ${alts.map(a=>`<button type="button" class="linkish" data-tour-swap="${i}" data-lead="${esc(a.l.id)}">${esc(a.l.name)} (${esc(a.l.city||"")}, ${esc(a.l.vetVerdict||"")})</button>`).join(" · ")}</div>`:""}
     </div></li>`; }).join("");
   return `<div class="tour">${form}
@@ -901,7 +916,7 @@ function afterTour(){
   $("#tour-form")?.addEventListener("submit", async e => {
     e.preventDefault(); const T=S.tour, msg=$("#tr-msg");
     const to=$("#tr-to").value.trim(), from=$("#tr-from").value.trim();
-    Object.assign(T,{gigs:+$("#tr-gigs").value||5, min:$("#tr-min").value, corridor:+$("#tr-corr").value||75});
+    Object.assign(T,{gigs:+$("#tr-gigs").value||5, min:$("#tr-min").value, corridor:+$("#tr-corr").value||75, includePlayed:$("#tr-played").checked});
     if (to!==T.to) T.toPt=null; if (from!==T.from) T.fromPt=null; T.to=to; T.from=from; saveTour();
     msg.textContent="Finding the cities…";
     try { T.fromPt = T.fromPt || await geocode(from); T.toPt = T.toPt || await geocode(to); } catch { msg.textContent="Couldn't look up those cities. Check your connection and try again."; return; }
@@ -1269,6 +1284,7 @@ function openLeadForm(l){
       <label>Festival dates<input class="field" id="lf-edates" value="${esc(l.eventDates||"")}" placeholder="June 12–14, 2027"></label>
       <label>Submission deadline<input class="field" id="lf-deadline" type="date" value="${esc(l.deadline||"")}"></label>
     </div>
+    <label class="small muted" style="display:flex;gap:6px;align-items:center;flex-direction:row"><input type="checkbox" id="lf-played" ${l.playedBefore?"checked":""} style="width:auto"> We've played here before</label>
     <label>Research / background<textarea class="field" id="lf-fit" style="min-height:120px">${esc(l.fitText||"")}</textarea></label>
     <div class="foot">${!isNew?`<button class="btn danger" type="button" id="lf-del" style="margin-right:auto">Delete lead</button>`:""}<button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">${isNew?"Save":"Save"}</button></div>
   </form>`, kindOf(l));
@@ -1282,7 +1298,7 @@ function openLeadForm(l){
       stateCode: sc || null, state: STATE_NAMES[sc] || null, contactName: $("#lf-contact").value.trim(),
       emails: split($("#lf-emails").value), phones: split($("#lf-phones").value), website: $("#lf-web").value.trim() || null,
       seats: $("#lf-seats").value ? Number($("#lf-seats").value) : null, submissionUrl: $("#lf-sub").value.trim() || null,
-      eventDates: $("#lf-edates").value.trim() || null, deadline: $("#lf-deadline").value || null, fitText: $("#lf-fit").value,
+      eventDates: $("#lf-edates").value.trim() || null, deadline: $("#lf-deadline").value || null, fitText: $("#lf-fit").value, playedBefore: $("#lf-played").checked,
       updatedAt: new Date().toISOString() };
     if (!data.name) return;
     // map position for the tour planner (looked up from city and state)
@@ -1540,6 +1556,9 @@ document.addEventListener("click", e => {
   const copy = t.closest("[data-copy]"); if (copy) { copyText(copy.dataset.copy, copy); return; }
   const evb = t.closest("[data-event]"); if (evb) { e.stopPropagation(); const ev = S.events.find(x=>x.id===evb.dataset.event); if (ev) openEventForm(ev); return; }
   const tt = t.closest("[data-tour-to]"); if (tt) { const l = S.leads.get(tt.dataset.tourTo); if (l) { S.tour.to = `${l.city||""}, ${l.stateCode||""}`; S.tour.toPt = {lat:l.lat, lng:l.lng}; S.tour.plan = null; go("tour"); } return; }
+  const tsk = t.closest("[data-tour-skip]"); if (tsk) { tourDrop(tsk.dataset.tourSkip, false); return; }
+  const tplay = t.closest("[data-tour-played]"); if (tplay) { tourDrop(tplay.dataset.tourPlayed, true); return; }
+  if (t.closest("#tr-unskip")) { e.preventDefault(); S.tour.skip = []; saveTour(); tourReplan(); return; }
   const ts = t.closest("[data-tour-swap]"); if (ts) { const i = +ts.dataset.tourSwap, id = ts.dataset.lead; const sl = S.tour.plan.slots[i]; const j = sl.alts.findIndex(a=>a.l.id===id); if (j>=0) { const alt = sl.alts.splice(j,1)[0]; if (sl.pick) sl.alts.unshift(sl.pick); sl.pick = alt; } render(); return; }
   const op = t.closest("[data-open]"); if (op) { openLead(op.dataset.open); return; }
   const kb = t.closest("[data-kind]"); if (kb) { S.f.kind = kb.dataset.kind; saveFilters(); render(); return; }
