@@ -92,6 +92,13 @@ main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px
 .kdot{width:9px;height:9px;border-radius:50%;background:var(--k);flex:none}
 .pill{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
 .r-Strong{color:var(--good);border-color:currentColor}
+.v-great{background:var(--good);color:#fff;border-color:var(--good)}
+.v-good{color:var(--good);border-color:currentColor}
+.v-possible{color:var(--warn);border-color:currentColor}
+.v-poor{color:var(--bad);border-color:currentColor}
+.v-conf{color:var(--muted);border-style:dashed}
+.v-show{color:var(--festival);border-color:currentColor}
+.v-none{color:var(--muted);opacity:.75}
 .r-Conditional{color:var(--warn);border-color:currentColor}
 .r-Hold{color:var(--muted);border-style:dashed}
 .r-Reject{color:var(--bad);border-color:currentColor}
@@ -330,6 +337,12 @@ const KINDS = {venue:"Venue", festival:"Festival", private:"Private event"};
 const STATUSES = ["Not contacted","Contacted","Follow up","In talks","Booked","Declined","Do not contact"];
 const OPEN_STATUSES = ["Not contacted","Contacted","Follow up","In talks"];
 const RATINGS = ["Strong","Conditional","Hold","Reject","Unrated"];
+// My own rating (booking agent), shown everywhere. ChatGPT's stays in l.rating for reference.
+const VERDICTS = ["Great fit","Good fit","Possible","Poor fit","Needs confirmation","Showcase, not a paid gig","Closed"];
+const VCLS = {"Great fit":"v-great","Good fit":"v-good","Possible":"v-possible","Poor fit":"v-poor","Closed":"v-poor","Needs confirmation":"v-conf","Showcase, not a paid gig":"v-show"};
+const NOT_CHECKED = "Not checked yet";
+const myRating = l => l.vetVerdict || NOT_CHECKED;
+const ratingPill = l => `<span class="pill ${VCLS[l.vetVerdict]||"v-none"}">${esc(myRating(l))}</span>`;
 const EV_STATUSES = ["Hold","Confirmed","Contract sent","Contract signed","Played","Cancelled"];
 const DEALS = ["TBD","Guarantee","Door split","Guarantee vs. door","Ticket split","Flat fee (private)","Donation / hat"];
 const LOG_KINDS = {note:"Note", call:"Phone call", email:"Email sent", reply:"Reply received", text:"Text"};
@@ -344,6 +357,7 @@ const S = {
   calMonth:null, names:{}, draft:null, hist:[],
 };
 try { const f = JSON.parse(localStorage.getItem("tm-filters")||"null"); if (f) Object.assign(S.f, f); } catch {}
+if (S.f.rating && ![...VERDICTS,NOT_CHECKED].includes(S.f.rating)) S.f.rating = ""; // old ChatGPT-rating filter
 try { const p = JSON.parse(localStorage.getItem("tm-prefs")||"null"); if (p) Object.assign(S.prefs, p); } catch {}
 
 const $ = (s, el=document) => el.querySelector(s);
@@ -569,8 +583,8 @@ function viewToday(){
   const due = leads.filter(l => l.followUp && l.followUp <= t && OPEN_STATUSES.includes(l.status||"Not contacted")).sort((a,b)=>a.followUp.localeCompare(b.followUp));
   const soon = S.events.filter(e => e.date >= t && e.date <= addDays(60) && e.status!=="Cancelled").sort((a,b)=> (a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));
   const deadlines = leads.filter(l => l.kind==="festival" && l.deadline && l.deadline >= t && l.deadline <= addDays(90)).sort((a,b)=>a.deadline.localeCompare(b.deadline));
-  const start = leads.filter(l => (l.status||"Not contacted")==="Not contacted" && (l.priority==="High" || l.rating==="Strong") && l.emails?.length)
-    .sort((a,b)=> (a.priority==="High"?0:1)-(b.priority==="High"?0:1) || String(a.stateCode).localeCompare(b.stateCode)).slice(0,10);
+  const start = leads.filter(l => (l.status||"Not contacted")==="Not contacted" && (l.priority==="High" || l.vetVerdict==="Great fit") && l.emails?.length)
+    .sort((a,b)=> (a.vetVerdict==="Great fit"?0:1)-(b.vetVerdict==="Great fit"?0:1) || (a.priority==="High"?0:1)-(b.priority==="High"?0:1) || String(a.stateCode).localeCompare(b.stateCode)).slice(0,10);
   const counts = Object.fromEntries(STATUSES.map(s=>[s,0])); leads.forEach(l => counts[l.status||"Not contacted"]++);
   const pipe = STATUSES.slice(0,5).map(s => `<button type="button" data-status-filter="${esc(s)}"><span class="big">${counts[s]}</span><span class="lab">${esc(s)}</span></button>`).join("");
   return `<div class="today">
@@ -584,7 +598,7 @@ function viewToday(){
       : `<p class="empty small">No dates yet. Add holds and confirmed shows from the Calendar or from any lead.</p>`}
     </section>
     <section class="panel"><h2>Start here <small>top unreached leads with email</small></h2>
-      ${start.length ? `<ul class="plist">${start.map(l=>leadLi(l, `<span class="pill r-${esc(l.rating)}">${esc(l.rating)}</span>`)).join("")}</ul>` : `<p class="empty small">You've reached out to every high-priority lead.</p>`}
+      ${start.length ? `<ul class="plist">${start.map(l=>leadLi(l, ratingPill(l))).join("")}</ul>` : `<p class="empty small">You've reached out to every high-priority lead.</p>`}
     </section>
     ${deadlines.length ? `<section class="panel"><h2>Festival deadlines <small>next 90 days</small></h2><ul class="plist">${deadlines.map(l=>leadLi(l,`<span class="mono small">${fmtDate(l.deadline)}</span>`)).join("")}</ul></section>` : ""}
   </div>`;
@@ -597,7 +611,7 @@ function filtered(){
     (f.kind==="all" || kindOf(l)===f.kind) &&
     (!f.state || l.stateCode===f.state) &&
     (!f.status || (l.status||"Not contacted")===f.status) &&
-    (!f.rating || (l.rating||"Unrated")===f.rating) &&
+    (!f.rating || myRating(l)===f.rating) &&
     (!f.prio || (l.priority||"Normal")===f.prio) &&
     (!f.email || (l.emails && l.emails.length)) &&
     (!q || [l.name,l.city,l.state,l.contactName,(l.emails||[]).join(" "),l.fitText].join(" ").toLowerCase().includes(q))
@@ -614,7 +628,7 @@ function viewLeads(){
     const st = l.status||"Not contacted";
     rows += `<div class="row k-${kindOf(l)}" role="option" tabindex="0" data-open="${esc(l.id)}" aria-selected="${l.id===S.selected}"><span class="bar"></span>
       <div style="min-width:0"><div class="nm">${esc(l.name)}</div><div class="sub">${(()=>{const d=dateLabel(l);return d?d.html+" ":""})()}${esc(l.city||"")}${l.seats? ` · <span class="mono">${l.seats}</span> seats`:""}${!(l.emails||[]).length? " · no email":""}</div></div>
-      <div class="right"><span class="pill r-${esc(l.rating||"Unrated")}">${esc(l.rating||"Unrated")}</span>${st!=="Not contacted"?`<span class="s-pill ${statusCls(st)}">${esc(st)}</span>`:""}</div></div>`;
+      <div class="right">${ratingPill(l)}${st!=="Not contacted"?`<span class="s-pill ${statusCls(st)}">${esc(st)}</span>`:""}</div></div>`;
   }
   const kt = (k,label) => `<button type="button" class="${k==="all"?"":"k-"+k}" data-kind="${k}" aria-pressed="${S.f.kind===k}">${k!=="all"?`<span class="kdot"></span>`:""}${label} <span class="n">${kc(k)}</span></button>`;
   return `<div class="leads">
@@ -625,7 +639,7 @@ function viewLeads(){
         <select id="f-state" aria-label="State"><option value="">All states</option>${states.map(s=>`<option value="${s}" ${S.f.state===s?"selected":""}>${esc(STATE_NAMES[s]||s)}</option>`).join("")}</select>
         <select id="f-status" aria-label="Status"><option value="">Any status</option>${STATUSES.map(s=>`<option ${S.f.status===s?"selected":""}>${s}</option>`).join("")}</select>
         <select id="f-prio" aria-label="Priority"><option value="">Any priority</option>${["High","Normal","Low"].map(s=>`<option value="${s}" ${S.f.prio===s?"selected":""}>${s} priority</option>`).join("")}</select>
-        <select id="f-rating" aria-label="ChatGPT rating"><option value="">Any ChatGPT rating</option>${RATINGS.map(s=>`<option value="${s}" ${S.f.rating===s?"selected":""}>ChatGPT: ${s}</option>`).join("")}</select>
+        <select id="f-rating" aria-label="Rating"><option value="">Any rating</option>${[...VERDICTS,NOT_CHECKED].map(s=>`<option value="${s}" ${S.f.rating===s?"selected":""}>${s}</option>`).join("")}</select>
         <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="f-email" ${S.f.email?"checked":""} style="width:auto"> Has email</label>
       </div>
       <button class="btn" type="button" id="btn-new2" style="align-self:flex-start">+ Add ${S.f.kind==="festival"?"festival":S.f.kind==="private"?"private client":"venue"}</button>
@@ -652,10 +666,11 @@ function renderDetail(){
   box.innerHTML = `
   <div class="d-head">
     <div class="d-meta"><span class="kchip"><span class="kdot"></span>${KINDS[k]}</span>
-      <span class="pill r-${esc(l.rating||"Unrated")}">${esc(l.rating||"Unrated")}</span>${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
+      ${ratingPill(l)}${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
       ${l.priorityLabel && !/^(STRONG|CONDITIONAL|HOLD|HIGH PRIORITY)$/.test(l.priorityLabel)?`<span class="small muted">${esc(l.priorityLabel.toLowerCase())}</span>`:""}</div>
     <h2>${esc(l.name)}</h2>
     ${l.agentNote?`<div class="agent-note"><b>Booking agent's take:</b> ${esc(l.agentNote)}</div>`:""}
+    ${l.rating&&l.rating!=="Unrated"?`<div class="small muted">ChatGPT's earlier rating: ${esc(l.rating)}</div>`:""}
     ${(()=>{const d=dateLabel(l);return d?`<div>${d.html}</div>`:""})()}
     <div class="muted">${esc(place(l))}${l.seats?` · <span class="mono">${l.seats}</span> seats`:""}${l.mapUrl?` · <a href="${esc(l.mapUrl)}" target="_blank" rel="noopener">Map</a>`:""}${l.website?` · <a href="${esc(l.website)}" target="_blank" rel="noopener">Website</a>`:""}</div>
     <div class="d-actions">
@@ -915,7 +930,7 @@ async function exportSpreadsheet(btn){
     const acts = await allActivity();
     const leads = [...S.leads.values()].sort((a,b)=> String(a.stateCode).localeCompare(String(b.stateCode)) || String(a.city).localeCompare(String(b.city)) || String(a.name).localeCompare(String(b.name)));
     const L = leads.map(l => ({"Type":KINDS[kindOf(l)], "Name":l.name, "City":l.city||"", "State":l.stateCode||"", "Status":l.status||"Not contacted",
-      "Follow up":l.followUp||"", "Last contact":l.lastContact||"", "Fit rating":l.rating||"", "Priority":l.priority||"", "Contact person":l.contactName||"",
+      "Follow up":l.followUp||"", "Last contact":l.lastContact||"", "My rating":myRating(l), "ChatGPT rating":l.rating||"", "Priority":l.priority||"", "Contact person":l.contactName||"",
       "Emails":(l.emails||[]).join(", "), "Phones":(l.phones||[]).join(", "), "Seats":l.seats??"", "Festival dates":l.eventDates||"", "Deadline":l.deadline||"",
       "Website":l.website||"", "Submission link":l.submissionUrl||"", "Research":l.fitText||"", "How to reach":l.contactText||"", "Location":l.locationText||"",
       "Sources":(l.links||[]).map(x=>x.url).join("\n"), "Origin":l.origin||"", "Record ID":l.id}));
@@ -1111,7 +1126,7 @@ function openLeadForm(l){
   <form class="sb" id="lead-form">
     <div class="grid2">
       <label>Type<select class="field" id="lf-kind">${Object.entries(KINDS).map(([v,t])=>`<option value="${v}" ${kindOf(l)===v?"selected":""}>${t}</option>`).join("")}</select></label>
-      <label>Fit rating<select class="field" id="lf-rating">${RATINGS.map(r=>`<option ${ (l.rating||"Unrated")===r?"selected":""}>${r}</option>`).join("")}</select></label>
+      <label>Rating<select class="field" id="lf-rating">${[NOT_CHECKED,...VERDICTS].map(r=>`<option ${myRating(l)===r?"selected":""}>${r}</option>`).join("")}</select></label>
     </div>
     <label>Name<input class="field" id="lf-name" required value="${esc(l.name||"")}" placeholder="Venue, festival or client name"></label>
     <div class="grid2">
@@ -1141,7 +1156,7 @@ function openLeadForm(l){
   $("#lead-form").addEventListener("submit", async e => {
     e.preventDefault();
     const sc = $("#lf-state").value;
-    const data = { kind: $("#lf-kind").value, rating: $("#lf-rating").value, name: $("#lf-name").value.trim(), city: $("#lf-city").value.trim(),
+    const data = { kind: $("#lf-kind").value, vetVerdict: $("#lf-rating").value===NOT_CHECKED ? null : $("#lf-rating").value, name: $("#lf-name").value.trim(), city: $("#lf-city").value.trim(),
       stateCode: sc || null, state: STATE_NAMES[sc] || null, contactName: $("#lf-contact").value.trim(),
       emails: split($("#lf-emails").value), phones: split($("#lf-phones").value), website: $("#lf-web").value.trim() || null,
       seats: $("#lf-seats").value ? Number($("#lf-seats").value) : null, submissionUrl: $("#lf-sub").value.trim() || null,
