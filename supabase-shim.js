@@ -33,18 +33,27 @@
       doc: id => docRef(col, id || uuid()),
       add: async data => { const r = docRef(col, uuid()); await r.set(data); return r; },
       async get() {
-        let rq = sb.from("docs").select("id,data").eq("collection", col);
-        for (const [f, op, v] of filters) {
-          const path = "data->>" + f;
-          if (op === "==" || op === "eq") rq = rq.eq(path, v);
-          else if (op === ">" || op === "gt") rq = rq.gt(path, v);
-          else if (op === "<" || op === "lt") rq = rq.lt(path, v);
-          else if (op === "in") rq = rq.in(path, v);
+        const build = () => {
+          let rq = sb.from("docs").select("id,data").eq("collection", col);
+          for (const [f, op, v] of filters) {
+            const path = "data->>" + f;
+            if (op === "==" || op === "eq") rq = rq.eq(path, v);
+            else if (op === ">" || op === "gt") rq = rq.gt(path, v);
+            else if (op === "<" || op === "lt") rq = rq.lt(path, v);
+            else if (op === "in") rq = rq.in(path, v);
+          }
+          rq = order ? rq.order("data->>" + order[0], { ascending: order[1] !== "desc" }) : rq.order("id");
+          return rq;
+        };
+        // The server returns at most 1000 rows per request, so read in pages up to the limit.
+        const data = [];
+        for (let from = 0; from < lim; from += 1000) {
+          const to = Math.min(lim, from + 1000) - 1;
+          const { data: page, error } = await build().range(from, to);
+          if (error) fail(error);
+          data.push(...page);
+          if (page.length < to - from + 1) break;
         }
-        if (order) rq = rq.order("data->>" + order[0], { ascending: order[1] !== "desc" });
-        rq = rq.range(0, Math.max(0, lim - 1));
-        const { data, error } = await rq;
-        if (error) fail(error);
         const docs = data.map(r => docSnap(r.id, r.data));
         return { docs, size: docs.length, empty: !docs.length, docChanges: () => docs.map((d, i) => ({ type: "added", doc: d, oldIndex: -1, newIndex: i })), metadata: { fromCache: false, hasPendingWrites: false } };
       },

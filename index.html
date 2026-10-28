@@ -461,15 +461,15 @@ async function boot(){
       try { const p = await db.doc(`data/users/${S.me}/prefs`).get(); if (p.exists) Object.assign(S.prefs, p.data()); } catch {}
     }
   }
-  db.collection("leads").limit(1000).onSnapshot(snap => {
+  db.collection("leads").limit(20000).onSnapshot(snap => {
     S.leads = new Map(snap.docs.map(d => [d.id, {id:d.id, ...d.data()}]));
     S.ready.leads = true; render();
   }, e => { console.error(e); toast("Lost connection to leads. Reload the page."); });
-  db.collection("events").limit(1000).onSnapshot(snap => {
+  db.collection("events").limit(20000).onSnapshot(snap => {
     S.events = snap.docs.map(d => ({id:d.id, ...d.data()}));
     S.ready.events = true; render();
   }, e => console.error(e));
-  db.collection("fans").limit(1000).onSnapshot(snap => {
+  db.collection("fans").limit(20000).onSnapshot(snap => {
     S.fans = snap.docs.map(d => ({id:d.id, ...d.data()}));
     if (S.view==="fans") render();
   }, e => console.error(e));
