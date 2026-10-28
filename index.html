@@ -320,6 +320,7 @@ table.states tr:hover td{background:var(--sunken)}
   .top-actions .btn{padding:6px 10px}
 }
 @media (prefers-reduced-motion:no-preference){.row,.btn{transition:background .12s,border-color .12s}}
+.tall{margin-top:14px}.tall summary{cursor:pointer;font-weight:600}.tall-list{margin:8px 0 0;padding-left:22px;display:grid;gap:6px;max-height:420px;overflow:auto}
 </style>
 
 <header class="top">
@@ -921,6 +922,10 @@ function viewTour(){
         <ol class="tstops">${rows}</ol>
         <p class="small muted">About ${Math.round(total)} miles straight-line in all, ${Math.round(home)} of them home from the last stop. Real driving is longer, so check the route in Google Maps. These are suggestions only; none of these dates are booked.</p>
         <a class="btn" href="${esc(gm)}" target="_blank" rel="noopener">Open route in Google Maps</a>
+        <details class="tall"><summary>See all ${P.cands.length} venues in range</summary>
+          <p class="small muted">Every venue within ${T.corridor} miles of the route at your chosen rating, in order from home to the turnaround. Grey dots on the map are these venues.</p>
+          <ol class="tall-list">${[...P.cands].sort((a,b)=>a.t-b.t).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> ${ratingPill(l)}${pickedIds.has(l.id)?' <span class="pill">On the route</span>':''} <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${Math.round(c.d)} mi off the route${l.playedBefore?" · played here before":""}</span></li>`}).join("")}</ol>
+        </details>
       </section>
     </div></div>`;
 }
