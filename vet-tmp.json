@@ -1,0 +1,181 @@
+[
+ {
+  "name": "Porcupine Theater",
+  "city": "Homer",
+  "stateCode": "AK",
+  "address": "106 W. Pioneer Ave., Homer, AK 99603",
+  "website": "https://porcupinetheater.com",
+  "emails": [],
+  "phones": [],
+  "seats": null,
+  "fitType": "theater",
+  "verdict": "Possible",
+  "priority": "Normal",
+  "evidence": "Hussy Hicks listed Jun 21, 2026 (Songkick); Samantha Crain and Quinn Christopherson Feb 21, 2026; Louser Jul 16, 2026 (Songkick)",
+  "note": "POSSIBLE (my check, Oct 28). Renovated former Homer Theater reopened Jan 2025 under new owners (co-owner Susannah Webster); mainly a membership movie house that also lists live concerts. Peer trace: Hussy Hicks played Jun 21, 2026; Samantha Crain/Quinn Christopherson (songwriters) Feb 2026 show it books touring songwriter acts. Seat count, fees and booking contact unknown; use the site or ask the owners. Alaska routing is expensive, so pitch only as part of a summer Homer/Kenai run.",
+  "src": "https://www.songkick.com/venues/4595757-porcupine-theater",
+  "sources": [
+   "https://www.songkick.com/venues/4595757-porcupine-theater",
+   "https://www.homernews.com/2025/02/05/a-night-out-at-the-theater/",
+   "https://www.kbbi.org/tags/the-porcupine-theater"
+  ],
+  "id": "v-tr10-n01"
+ },
+ {
+  "name": "HTMA Coffeehouse Concert Series at Burritt on the Mountain (Old Country Church)",
+  "city": "Huntsville",
+  "stateCode": "AL",
+  "address": null,
+  "website": "https://huntsvillefolk.org",
+  "emails": [],
+  "phones": [],
+  "seats": null,
+  "fitType": "songwriter room",
+  "verdict": "Possible",
+  "priority": "Low",
+  "evidence": "Shane Adkins opened the 2023 season Jan 24, 2023 (older than 2025; no 2025-26 date seen)",
+  "note": "POSSIBLE (my check, Oct 28). Huntsville Traditional Music Association runs a volunteer coffeehouse series in the Old Church at Burritt on the Mountain; tickets are about $10 and shows have sold out. Peer trace: fingerstyle thumbpicker Shane Adkins headlined Jan 24, 2023 (dated 2023, not current). Traditional/old-time leaning and low pay likely; fees, seats and booking contact unknown (site lists no email or phone in the page I saw). Worth a query only if touring through north Alabama.",
+  "src": "https://256today.com/hall-of-fame-thumbpicker-shane-adkins-headlines-burritt-coffeehouse-series/",
+  "sources": [
+   "https://256today.com/hall-of-fame-thumbpicker-shane-adkins-headlines-burritt-coffeehouse-series/",
+   "https://burrittonthemountain.com/?p=58098"
+  ],
+  "id": "v-tr10-n02"
+ },
+ {
+  "name": "Music on the Mountain at Table Rock State Park (Gaines Lodge)",
+  "city": "Pickens",
+  "stateCode": "SC",
+  "address": "158 Ellison Ln, Pickens, SC 29671",
+  "website": "https://southcarolinaparks.com/",
+  "emails": [],
+  "phones": [],
+  "seats": null,
+  "fitType": "other",
+  "verdict": "Possible",
+  "priority": "Low",
+  "evidence": "Andy Leftwich, Fri Dec 11, 2026, 6:30-10 PM, $20, 79 tickets available (SC Parks reservation page)",
+  "note": "POSSIBLE (my check, Oct 28). State park lodge concert; Andy Leftwich (mandolin/fiddle) is booked Dec 11, 2026 at $20. The page is inconsistent on the room (Table Rock Lodge vs Gaines Lodge) and shows 79 tickets available, hinting at roughly 80-100 seats but that is unconfirmed. Booker, fee and other series acts unknown; call the park at 864-878-9813 or trocksp@scprt.com to ask.",
+  "src": "https://reserve.southcarolinaparks.com/register/music-on-the-mountain-featuring-andy-leftwich",
+  "sources": [
+   "https://reserve.southcarolinaparks.com/register/music-on-the-mountain-featuring-andy-leftwich",
+   "https://southcarolinaparks.com/products/10003633"
+  ],
+  "id": "v-tr10-n03"
+ },
+ {
+  "name": "Tennessee Valley Old Time Fiddlers Concert Series (McCandless Hall, Athens State University)",
+  "city": "Athens",
+  "stateCode": "AL",
+  "address": null,
+  "website": "https://www.TVOTFC.org",
+  "emails": [],
+  "phones": [],
+  "seats": null,
+  "fitType": "arts / library",
+  "verdict": "Possible",
+  "priority": "Low",
+  "evidence": "Andy Leftwich & Friends opened the series on a Tuesday, Nov 28 (year appears to be 2023; article titled 2024 series; date uncertain)",
+  "note": "POSSIBLE (my check, Oct 28). University hall series run by the Tennessee Valley Old Time Fiddlers Convention committee with Livingston Concert/Lecture Series and state arts funding; tickets $15. Peer trace: Andy Leftwich holiday show. Old-time/fiddle focused, so a rock-jazz folk duo is a stretch, though Myles' fiddle may help. Seats and fee unknown.",
+  "src": "https://athens.edu/?p=61268",
+  "sources": [
+   "https://athens.edu/?p=61268"
+  ],
+  "id": "v-tr10-n04"
+ },
+ {
+  "name": "Musk Ox Farm Summer Concert Series",
+  "city": "Palmer",
+  "stateCode": "AK",
+  "address": "12850 E Archie Rd, Palmer, AK 99645",
+  "website": "https://www.muskoxfarm.org/events-1/hussy-hicks",
+  "emails": [],
+  "phones": [],
+  "seats": null,
+  "fitType": "other",
+  "verdict": "Possible",
+  "priority": "Low",
+  "evidence": "Hussy Hicks, Sat Jun 27, 2026 (outdoor backyard, 2026 Summer Concert Series)",
+  "note": "POSSIBLE (my check, Oct 28). Outdoor lawn-chair summer series on a farm; Hussy Hicks played Jun 27, 2026. Not a seated listening room and weather dependent; price, capacity and fee unknown. Only relevant for a summer Alaska tour.",
+  "src": "https://www.muskoxfarm.org/events-1/hussy-hicks",
+  "sources": [
+   "https://www.muskoxfarm.org/events-1/hussy-hicks"
+  ],
+  "id": "v-tr10-n05"
+ },
+ {
+  "name": "Three Lakes Center for the Arts",
+  "city": "Three Lakes",
+  "stateCode": "WI",
+  "address": "1760 Superior St, Three Lakes, WI 54562",
+  "website": "https://www.tlcfa.org",
+  "emails": [
+   "mail@TLCFA.org"
+  ],
+  "phones": [
+   "(715) 546-2299"
+  ],
+  "seats": 129,
+  "fitType": "arts / library",
+  "verdict": "Good fit",
+  "priority": "Normal",
+  "evidence": "Monroe Crossing, May 15, 2026 7:30pm (tlcfa.org calendar). 2026 listings on TickPick: Kody Norris Show Aug 27, Harmonious Wail Aug 15, Janet Planet & John Harmon Aug 7, Jazz Spectrum Jul 11, John Stano & John Higgins Oct 17, Flying Blind Sep 26, Mike Milligan and Steam Shovel Sep 3; also an Elton John tribute Sep 11.",
+  "note": "GOOD FIT (my check, Oct 28). Volunteer-run arts center in northern Wisconsin with a theater that is listed at 129 seats (screendollars.com, a cinema directory, so confirm the live-concert seat count). Monroe Crossing played May 15, 2026; the rest of the calendar mixes bluegrass, jazz, duos and songwriters, so it is not bluegrass-only. Pitch a seasonal summer or fall date; pay terms, ticket price and booking route are unknown. Contact is the general mail address and phone listed on the Oneida County tourism page, not a confirmed booker.",
+  "src": "https://www.tlcfa.org/calendar/2025-07/",
+  "sources": [
+   "https://www.tlcfa.org/calendar/2025-07/",
+   "https://www.tlcfa.org/calendar/2026-09/",
+   "https://screendollars.com/theatres/3-lakes-center-for-the-arts/",
+   "https://oneidacountywi.com/business/attractions/three-lakes-center-for-the-arts",
+   "https://www.tickpick.com/buy-mike-milligan-and-steam-shovel-tickets-three-lakes-center-for-the-arts-9-3-26-7pm/8030983/"
+  ],
+  "id": "v-tr10-n06"
+ },
+ {
+  "name": "WideSpot Performing Arts Center",
+  "city": "Wabasha",
+  "stateCode": "MN",
+  "address": "611 Broadway Ave, Wabasha, MN 55981",
+  "website": "https://widespotperformingarts.org/",
+  "emails": [
+   "widespotarts@gmail.com"
+  ],
+  "phones": [
+   "715-448-0536"
+  ],
+  "seats": null,
+  "fitType": "arts / library",
+  "verdict": "Possible",
+  "priority": "Normal",
+  "evidence": "Monroe Crossing, Mar 28, 2026 7pm (wabashamn.org). Upcoming: Sue Orfield and Balterdash Nov 14, 2026; Sam Miltich Music (Django-style jazz) Nov 28, 2026.",
+  "note": "POSSIBLE (my check, Oct 28). Restored historic school (Mittel Schule) used as an auditorium-seat performing arts center with a bar. Monroe Crossing played Mar 28, 2026, and the fall calendar includes a Django-style jazz act and an Americana/Celtic band, so it books beyond bluegrass. Seat count, fees and booking route are unknown; it also runs a Battle of the Bands, so it is a mixed community venue. Email and phone are listed on the Wabasha chamber site and may be general contacts, not a confirmed booker.",
+  "src": "https://www.wabashamn.org/?p=49825",
+  "sources": [
+   "https://www.wabashamn.org/?p=49825",
+   "https://www.wabashamn.org/venue/widespot-performing-arts-center",
+   "https://www.wabashamn.org/organizer/widespot-performing-arts-center"
+  ],
+  "id": "v-tr10-n07"
+ },
+ {
+  "name": "SC4 Fine Arts Theatre - Noon and Night Concert Series",
+  "city": "Port Huron",
+  "stateCode": "MI",
+  "address": "St. Clair County Community College, Port Huron, MI",
+  "website": "https://sc4.edu/arts-events",
+  "emails": [],
+  "phones": [],
+  "seats": null,
+  "fitType": "arts / library",
+  "verdict": "Possible",
+  "priority": "Low",
+  "evidence": "Kitty Donohoe, Mar 19, 2026 at 12pm and 7pm, free admission (sc4.edu).",
+  "note": "POSSIBLE (my check, Oct 28). Community-college concert series where Michigan folk singer Kitty Donohoe played two free shows on Mar 19, 2026. Free admission means the college pays the artist, so fees are likely modest and unknown. Seat count and booking contact were not found; the only named contact is the college's chief of staff for media, so route inquiries through sc4.edu/arts-events. Low priority until the series' other acts and fees are known.",
+  "src": "https://sc4.edu/news/kitty-donohoe-performs-at-sc4-as-part-of-the-noon-and-night-concert-series/",
+  "sources": [
+   "https://sc4.edu/news/kitty-donohoe-performs-at-sc4-as-part-of-the-noon-and-night-concert-series/",
+   "https://sc4.edu/?p=44843"
+  ],
+  "id": "v-tr10-n08"
+ }
+]
