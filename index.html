@@ -816,8 +816,8 @@ function viewStates(){
 /* ---------- Tour planner ---------- */
 // Suggests venues along a straight line from a start city to a turnaround city and back.
 // Distances are straight-line ("as the crow flies"); Google Maps gives real driving times.
-const RANK = {"Great fit":0,"Good fit":1,"Possible":2,"Needs confirmation":3};
-const MINS = ["Great fit","Good fit","Possible","Needs confirmation"];
+const RANK = {"Great fit":0,"Good fit":1,"Possible":2,"Needs confirmation":3,"All venues":99};
+const MINS = ["Great fit","Good fit","Possible","Needs confirmation","All venues"];
 S.tour = (()=>{ try { return {plan:null, ...JSON.parse(localStorage.getItem("tm-tour")||"{}"), plan:null}; } catch { return {plan:null}; } })();
 Object.entries({from:"Nashville, TN", to:"", gigs:5, min:"Good fit", corridor:75, includePlayed:false, skip:[]}).forEach(([k,v]) => { if (S.tour[k]==null || S.tour[k]==="") S.tour[k] = v; });
 const saveTour = () => { try { const {plan, ...rest} = S.tour; localStorage.setItem("tm-tour", JSON.stringify(rest)); } catch {} };
@@ -859,13 +859,13 @@ async function geocode(q){
 }
 function planTour(A,B,fixed={}){
   const T=S.tour, L=miles(A,B), maxRank=RANK[T.min]??1, n=Math.max(1,Math.min(12,+T.gigs||5));
-  const cands=[...S.leads.values()].filter(l => kindOf(l)==="venue" && l.lat!=null && (RANK[l.vetVerdict]??9)<=maxRank && !["Declined","Do not contact"].includes(l.status)
+  const cands=[...S.leads.values()].filter(l => kindOf(l)==="venue" && l.lat!=null && (RANK[l.vetVerdict]??9)<=maxRank && l.vetVerdict!=="Closed" && !["Declined","Do not contact"].includes(l.status)
     && !(T.skip||[]).includes(l.id) && (T.includePlayed || !l.playedBefore))
     .map(l => ({l, ...alongLine(A,B,l)})).filter(c => c.t>-0.05 && c.t<1.05 && c.d<=(+T.corridor||75));
   const nOut=Math.ceil(n/2), nBack=n-nOut, targets=[];
   for (let i=1;i<=nOut;i++) targets.push({leg:"Out", t:i/nOut, ti:targets.length});
   for (let j=1;j<=nBack;j++) targets.push({leg:"Back", t:1-(j-0.5)/(nBack+0.5), ti:targets.length});
-  const used=new Set(), score=(c,tg)=> (RANK[c.l.vetVerdict]??3)*1.5 + (c.l.priority==="High"?-0.5:c.l.priority==="Low"?0.5:0) + Math.abs(c.t-tg.t)*L/75 + c.d/100
+  const used=new Set(), score=(c,tg)=> Math.min(RANK[c.l.vetVerdict]??4,4)*1.5 + (c.l.priority==="High"?-0.5:c.l.priority==="Low"?0.5:0) + Math.abs(c.t-tg.t)*L/75 + c.d/100
     + (miles(A,c.l) < 60 ? 4 : 0); // a room near home isn't a tour stop
   // stops you kept stay where they are
   targets.forEach(tg => { const c = fixed[tg.ti] && cands.find(c=>c.l.id===fixed[tg.ti]); if (c) { tg.fixedPick = c; used.add(c.l.id); } });
