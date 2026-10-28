@@ -360,6 +360,8 @@ const VERDICTS = ["Great fit","Good fit","Possible","Poor fit","Needs confirmati
 const VCLS = {"Great fit":"v-great","Good fit":"v-good","Possible":"v-possible","Poor fit":"v-poor","Closed":"v-poor","Needs confirmation":"v-conf","Showcase, not a paid gig":"v-show"};
 const NOT_CHECKED = "Not checked yet";
 const myRating = l => l.vetVerdict || NOT_CHECKED;
+const BASE_CATS = ["house concert","songwriter room","listening room","folk / guitar society","arts / library","theater","jazz room","bar / restaurant","songwriter festival","folk/americana festival","private event","other"];
+const allCategories = () => [...new Set([...BASE_CATS, ...[...S.leads.values()].map(l=>l.fitType).filter(Boolean)])].sort();
 const ratingPill = l => `<span class="pill ${VCLS[l.vetVerdict]||"v-none"}">${esc(myRating(l))}</span>`;
 const EV_STATUSES = ["Hold","Confirmed","Contract sent","Contract signed","Played","Cancelled"];
 const DEALS = ["TBD","Guarantee","Door split","Guarantee vs. door","Ticket split","Flat fee (private)","Donation / hat"];
@@ -370,7 +372,7 @@ const S = {
   db:null, user:null, me:null, ready:{leads:false, events:false, templates:false},
   leads:new Map(), events:[], templates:[], activity:[], activityFor:null, unsubAct:null,
   view:"today", selected:null,
-  f:{kind:"all", q:"", state:"", status:"", rating:"", prio:"", email:false}, fans:[], fanQ:"", fanState:"",
+  f:{kind:"all", q:"", state:"", status:"", rating:"", prio:"", cat:"", email:false}, fans:[], fanQ:"", fanState:"",
   prefs:{service:"gmail", from:"tim@timthompsonguitar.com", signature:"Tim Thompson\nTim & Myles Thompson\nhttps://timandmylesthompson.com/"},
   calMonth:null, names:{}, draft:null, hist:[],
 };
@@ -632,6 +634,7 @@ function filtered(){
     (!f.status || (l.status||"Not contacted")===f.status) &&
     (!f.rating || myRating(l)===f.rating) &&
     (!f.prio || (l.priority||"Normal")===f.prio) &&
+    (!f.cat || (l.fitType||"")===f.cat) &&
     (!f.email || (l.emails && l.emails.length)) &&
     (!q || [l.name,l.city,l.state,l.contactName,(l.emails||[]).join(" "),l.fitText].join(" ").toLowerCase().includes(q))
   ).sort((a,b)=> String(a.stateCode).localeCompare(String(b.stateCode)) || String(a.city).localeCompare(String(b.city)) || String(a.name).localeCompare(String(b.name)));
@@ -659,10 +662,11 @@ function viewLeads(){
         <select id="f-status" aria-label="Status"><option value="">Any status</option>${STATUSES.map(s=>`<option ${S.f.status===s?"selected":""}>${s}</option>`).join("")}</select>
         <select id="f-prio" aria-label="Priority"><option value="">Any priority</option>${["High","Normal","Low"].map(s=>`<option value="${s}" ${S.f.prio===s?"selected":""}>${s} priority</option>`).join("")}</select>
         <select id="f-rating" aria-label="Rating"><option value="">Any rating</option>${[...VERDICTS,NOT_CHECKED].map(s=>`<option value="${s}" ${S.f.rating===s?"selected":""}>${s}</option>`).join("")}</select>
+        <select id="f-cat" aria-label="Category"><option value="">Any category</option>${[...new Set(all.filter(l=>S.f.kind==="all"||kindOf(l)===S.f.kind).map(l=>l.fitType).filter(Boolean))].sort().map(c=>`<option value="${esc(c)}" ${S.f.cat===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
         <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="f-email" ${S.f.email?"checked":""} style="width:auto"> Has email</label>
       </div>
       <button class="btn" type="button" id="btn-new2" style="align-self:flex-start">+ Add ${S.f.kind==="festival"?"festival":S.f.kind==="private"?"private client":"venue"}</button>
-      <div class="count">${list.length} of ${all.length} leads${S.f.kind!=="all"||S.f.state||S.f.status||S.f.rating||S.f.q||S.f.email?` · <a href="#" id="f-clear">Clear filters</a>`:""}</div>
+      <div class="count">${list.length} of ${all.length} leads${S.f.kind!=="all"||S.f.state||S.f.status||S.f.rating||S.f.prio||S.f.cat||S.f.q||S.f.email?` · <a href="#" id="f-clear">Clear filters</a>`:""}</div>
       <div class="list" role="listbox" aria-label="Leads">${rows || `<div class="empty small">${all.length? "No leads match these filters." : "No leads yet. Use + New lead, or ask Claude to import a research file."}</div>`}</div>
     </div>
     <section class="detail" id="detail"></section>
@@ -685,7 +689,7 @@ function renderDetail(){
   box.innerHTML = `
   <div class="d-head">
     <div class="d-meta"><span class="kchip"><span class="kdot"></span>${KINDS[k]}</span>
-      ${ratingPill(l)}${l.playedBefore?`<span class="pill">Played here</span>`:""}${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
+      ${ratingPill(l)}${l.fitType?`<span class="pill">${esc(l.fitType)}</span>`:""}${l.playedBefore?`<span class="pill">Played here</span>`:""}${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
       ${l.priorityLabel && !/^(STRONG|CONDITIONAL|HOLD|HIGH PRIORITY)$/.test(l.priorityLabel)?`<span class="small muted">${esc(l.priorityLabel.toLowerCase())}</span>`:""}</div>
     <h2>${esc(l.name)}</h2>
     ${l.agentNote?`<div class="agent-note"><b>Booking agent's take:</b> ${esc(l.agentNote)}</div>`:""}
@@ -1299,6 +1303,10 @@ function openLeadForm(l){
       <label>Type<select class="field" id="lf-kind">${Object.entries(KINDS).map(([v,t])=>`<option value="${v}" ${kindOf(l)===v?"selected":""}>${t}</option>`).join("")}</select></label>
       <label>Rating<select class="field" id="lf-rating">${[NOT_CHECKED,...VERDICTS].map(r=>`<option ${myRating(l)===r?"selected":""}>${r}</option>`).join("")}</select></label>
     </div>
+    <div class="grid2">
+      <label>Priority<select class="field" id="lf-prio">${["High","Normal","Low"].map(r=>`<option ${(l.priority||"Normal")===r?"selected":""}>${r}</option>`).join("")}</select></label>
+      <label>Category<input class="field" id="lf-cat" list="lf-cats" value="${esc(l.fitType||"")}" placeholder="Pick or type, e.g. house concert"><datalist id="lf-cats">${allCategories().map(c=>`<option value="${esc(c)}">`).join("")}</datalist></label>
+    </div>
     <label>Name<input class="field" id="lf-name" required value="${esc(l.name||"")}" placeholder="Venue, festival or client name"></label>
     <div class="grid2">
       <label>City<input class="field" id="lf-city" value="${esc(l.city||"")}"></label>
@@ -1333,6 +1341,7 @@ function openLeadForm(l){
       emails: split($("#lf-emails").value), phones: split($("#lf-phones").value), website: $("#lf-web").value.trim() || null,
       seats: $("#lf-seats").value ? Number($("#lf-seats").value) : null, submissionUrl: $("#lf-sub").value.trim() || null,
       eventDates: $("#lf-edates").value.trim() || null, deadline: $("#lf-deadline").value || null, fitText: $("#lf-fit").value, playedBefore: $("#lf-played").checked,
+      priority: $("#lf-prio").value, fitType: $("#lf-cat").value.trim() || null,
       updatedAt: new Date().toISOString() };
     if (!data.name) return;
     // map position for the tour planner (looked up from city and state)
@@ -1616,7 +1625,7 @@ document.addEventListener("click", e => {
     case "btn-back": goBack(); break;
     case "save-all": saveAll(); break;
     case "discard": S.draft = null; render(); toast("Changes discarded"); break;
-    case "f-clear": e.preventDefault(); S.f = {kind:"all", q:"", state:"", status:"", rating:"", prio:"", email:false}; saveFilters(); render(); break;
+    case "f-clear": e.preventDefault(); S.f = {kind:"all", q:"", state:"", status:"", rating:"", prio:"", cat:"", email:false}; saveFilters(); render(); break;
     case "act-email": if (l) openEmail(l); break;
     case "act-note": $("#note-body")?.focus(); break;
     case "act-date": if (l) openEventForm(null, {leadId:l.id}); break;
@@ -1643,6 +1652,7 @@ document.addEventListener("change", e => {
   if (id==="f-state") { S.f.state = e.target.value; saveFilters(); render(); }
   else if (id==="f-status") { S.f.status = e.target.value; saveFilters(); render(); }
   else if (id==="f-rating") { S.f.rating = e.target.value; saveFilters(); render(); }
+  else if (id==="f-cat") { S.f.cat = e.target.value; saveFilters(); render(); }
   else if (id==="f-prio") { S.f.prio = e.target.value; saveFilters(); render(); }
   else if (id==="f-email") { S.f.email = e.target.checked; saveFilters(); render(); }
   else if (id==="d-status" && l) { const d = draftFor(l); d.status = e.target.value; d.touched.status = true; updateSaveBar(); }
