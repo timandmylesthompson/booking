@@ -636,7 +636,7 @@ function filtered(){
     (!f.prio || (l.priority||"Normal")===f.prio) &&
     (!f.cat || (l.fitType||"")===f.cat) &&
     (!f.email || (l.emails && l.emails.length)) &&
-    (!q || [l.name,l.city,l.state,l.contactName,(l.emails||[]).join(" "),l.fitText].join(" ").toLowerCase().includes(q))
+    (!q || [l.name,l.city,l.state,l.contactName,(l.emails||[]).join(" "),l.fitText,l.origin,l.isNew?"new":""].join(" ").toLowerCase().includes(q))
   ).sort((a,b)=> String(a.stateCode).localeCompare(String(b.stateCode)) || String(a.city).localeCompare(String(b.city)) || String(a.name).localeCompare(String(b.name)));
 }
 function viewLeads(){
@@ -650,7 +650,7 @@ function viewLeads(){
     const st = l.status||"Not contacted";
     rows += `<div class="row k-${kindOf(l)}" role="option" tabindex="0" data-open="${esc(l.id)}" aria-selected="${l.id===S.selected}"><span class="bar"></span>
       <div style="min-width:0"><div class="nm">${esc(l.name)}</div><div class="sub">${(()=>{const d=dateLabel(l);return d?d.html+" ":""})()}${esc(l.city||"")}${l.seats? ` · <span class="mono">${l.seats}</span> seats`:""}${!(l.emails||[]).length? " · no email":""}</div></div>
-      <div class="right">${ratingPill(l)}${st!=="Not contacted"?`<span class="s-pill ${statusCls(st)}">${esc(st)}</span>`:""}</div></div>`;
+      <div class="right">${l.isNew?`<span class="pill v-show">New</span>`:""}${ratingPill(l)}${st!=="Not contacted"?`<span class="s-pill ${statusCls(st)}">${esc(st)}</span>`:""}</div></div>`;
   }
   const kt = (k,label) => `<button type="button" class="${k==="all"?"":"k-"+k}" data-kind="${k}" aria-pressed="${S.f.kind===k}">${k!=="all"?`<span class="kdot"></span>`:""}${label} <span class="n">${kc(k)}</span></button>`;
   return `<div class="leads">
@@ -689,7 +689,7 @@ function renderDetail(){
   box.innerHTML = `
   <div class="d-head">
     <div class="d-meta"><span class="kchip"><span class="kdot"></span>${KINDS[k]}</span>
-      ${ratingPill(l)}${l.fitType?`<span class="pill">${esc(l.fitType)}</span>`:""}${l.playedBefore?`<span class="pill">Played here</span>`:""}${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
+      ${l.isNew?`<span class="pill v-show" title="${esc(l.origin||"")}">New</span>`:""}${ratingPill(l)}${l.fitType?`<span class="pill">${esc(l.fitType)}</span>`:""}${l.playedBefore?`<span class="pill">Played here</span>`:""}${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
       ${l.priorityLabel && !/^(STRONG|CONDITIONAL|HOLD|HIGH PRIORITY)$/.test(l.priorityLabel)?`<span class="small muted">${esc(l.priorityLabel.toLowerCase())}</span>`:""}</div>
     <h2>${esc(l.name)}</h2>
     ${l.agentNote?`<div class="agent-note"><b>Booking agent's take:</b> ${esc(l.agentNote)}</div>`:""}
