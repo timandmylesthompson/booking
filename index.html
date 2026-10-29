@@ -324,6 +324,9 @@ table.states tr:hover td{background:var(--sunken)}
 }
 @media (prefers-reduced-motion:no-preference){.row,.btn{transition:background .12s,border-color .12s}}
 .tall{margin-top:14px}.tall summary{cursor:pointer;font-weight:600}.tall-list{margin:8px 0 0;padding-left:22px;display:grid;gap:6px;max-height:420px;overflow:auto}
+.tour-mapcol{display:flex;flex-direction:column;gap:6px;position:sticky;top:70px}@media (max-width:860px){.tour-mapcol{position:static}}.tour-side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.tlegend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted,#666)}.tlegend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+.tsugg summary,.tall summary{cursor:pointer}.tpop{min-width:180px;line-height:1.45}.tpop-btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 </style>
 
 <header class="top">
@@ -921,7 +924,7 @@ function viewTour(){
       <button type="button" class="btn sm" data-stop-del="${i}" title="Remove this stop" aria-label="Remove stop">✕</button>
     </div>`).join("");
   const form = `<form id="tour-form" class="panel tour-form">
-    <h2>Plan a tour <small>sketch the route with as many stops as you like; it finds your best-rated venues along every leg</small></h2>
+    <h2>Plan a tour <small>sketch the areas you want to pass through, then click venues on the map to build your tour</small></h2>
     <div class="troute">
       <label>Start<input class="field" id="tr-from" value="${esc(T.from)}" placeholder="City, ST"></label>
       <div class="tstops-edit"><div class="small muted" style="margin-bottom:4px">Areas to pass through, in order. Each town is just the middle of an area; venues all around it count.</div>${stopRows||`<p class="small muted" style="margin:0 0 6px">No stops yet. Add the towns you want the route to pass through.</p>`}
@@ -956,21 +959,71 @@ function viewTour(){
       ${alts.length?`<div class="talts small">Or: ${alts.map(a=>`<button type="button" class="linkish" data-tour-swap="${i}" data-lead="${esc(a.l.id)}">${esc(a.l.name)} (${esc(a.l.city||"")}, ${esc(a.l.vetVerdict||"")})</button>`).join(" · ")}</div>`:""}
     </div></li>`; }).join("");
   const routeText = [T.fromPt?.label||T.from, ...stops.map(x=>x.pt?.label||x.q)].map(x=>`<b>${esc(x)}</b>`).join(" → ") + ` → <b>${esc(endLabel)}</b>`;
+  const mineSet=new Set(T.mine||[]);
   return `<div class="tour">${form}
     <div class="tour-out">
-      <div id="tour-map" class="tour-map" role="img" aria-label="Map of the route and suggested stops"></div>
-      <section class="panel"><h2>Suggested route <small>${picks.length} of ${P.slots.length} gigs · ${P.cands.length} venues in range</small></h2>
-        <p class="small" style="margin-top:10px">${routeText}. About ${Math.round(P.L)} miles straight-line for the route you sketched.</p>
-        <ol class="tstops">${rows}</ol>
-        <p class="small muted">About ${Math.round(total)} miles straight-line through these gigs, ${Math.round(homeLeg)} of them from the last gig to the end. Real driving is longer, so check the route in Google Maps. These are suggestions only; none of these dates are booked.</p>
-        <a class="btn" href="${esc(gm)}" target="_blank" rel="noopener">Open route in Google Maps</a>
-        <details class="tall"><summary>See all ${P.cands.length} venues in range</summary>
-          <p class="small muted">Every venue within ${T.radius||50} miles of a stop or ${T.corridor} miles of the route between stops, at your chosen rating, in order along the route. Grey dots on the map are these venues.</p>
-          <ol class="tall-list">${[...P.cands].sort((a,b)=>a.s-b.s).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> ${ratingPill(l)}${pickedIds.has(l.id)?' <span class="pill">On the route</span>':''} <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${Math.round(c.d)} mi off the route${l.playedBefore?" · played here before":""}</span></li>`}).join("")}</ol>
+      <div class="tour-mapcol">
+        <div id="tour-map" class="tour-map" role="application" aria-label="Map of venues in your areas. Click a venue to add it to your tour."></div>
+        <div class="tlegend small"><span><i style="background:${RCOL["Great fit"]}"></i>Great fit</span><span><i style="background:${RCOL["Good fit"]}"></i>Good fit</span><span><i style="background:${RCOL["Possible"]}"></i>Possible</span><span><i style="background:${RCOL.other}"></i>Other</span><span>Dashed circles are your stop areas.</span></div>
+      </div>
+      <div class="tour-side">
+        <section class="panel" id="tour-mine">${mineHtml()}</section>
+        <details class="panel tsugg" ${T.showSugg?"open":""} id="tour-sugg"><summary><b>Suggested gigs</b> <span class="small muted">${picks.length} of ${P.slots.length} found · a starting point if you want one</span></summary>
+          <p class="small" style="margin-top:10px">${routeText}. About ${Math.round(P.L)} miles straight-line for the route you sketched.</p>
+          <ol class="tstops">${rows}</ol>
+          <button class="btn" type="button" id="sugg-use">Use these as my tour</button>
         </details>
-      </section>
+        <details class="panel tall"><summary><b>All ${P.cands.length} venues in range</b></summary>
+          <p class="small muted">Every venue within ${T.radius||50} miles of a stop or ${T.corridor} miles of the route between stops, at your chosen rating, in order along the route.</p>
+          <ol class="tall-list">${[...P.cands].sort((a,b)=>a.s-b.s).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> ${ratingPill(l)} <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${Math.round(c.d)} mi off the route${l.playedBefore?" · played here before":""}</span> ${mineSet.has(l.id)?'<span class="pill">In your tour</span>':`<button type="button" class="linkish small" data-mine-add="${esc(l.id)}">Add to tour</button>`}</li>`}).join("")}</ol>
+        </details>
+      </div>
     </div></div>`;
 }
+const RCOL={"Great fit":"#1e7a46","Good fit":"#2b7fb8","Possible":"#c98a16",other:"#8a9590"};
+const rcol=l=>RCOL[l.vetVerdict]||RCOL.other;
+// Your own tour: the gigs you click on the map, in driving order
+function mineLeads(){ return (S.tour.mine||[]).map(id=>S.leads.get(id)).filter(l=>l && l.lat!=null); }
+function mineHtml(){
+  const T=S.tour, P=T.plan; if (!P) return "";
+  const ls=mineLeads(), start=P.pts[0], end=P.pts[P.pts.length-1];
+  if (!ls.length) return `<h2>Your tour <small>start building</small></h2>
+    <p class="small" style="margin-top:10px">Click any dot on the map, then <b>Add to tour</b>. Add gigs in the order you'll play them; the line draws as you go. You can reorder or remove them here.</p>
+    <p class="small muted">Starting from ${esc(T.fromPt?.label||T.from)}${T.endPt?`, ending in ${esc(T.endPt.label||T.end)}`:", and back"}.</p>`;
+  let prev=start, total=0;
+  const items=ls.map((l,i)=>{ const m=miles(prev,l); total+=m; prev=l;
+    return `<li class="tstop"><div class="tnum">${i+1}</div><div style="min-width:0">
+      <div class="small muted">${Math.round(m)} mi straight-line from ${i?"the last gig":"the start"}</div>
+      <a href="#" data-open="${esc(l.id)}" class="nm">${esc(l.name)}</a> ${ratingPill(l)}
+      <div class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")}${l.seats?` · ${l.seats} seats`:""}${(l.status&&l.status!=="Not contacted")?` · ${esc(l.status)}`:""}${l.playedBefore?" · played here before":""}</div>
+      <div class="tbtns">${i?`<button type="button" class="btn sm" data-mine-up="${i}" aria-label="Move earlier">↑ Earlier</button>`:""}<button type="button" class="btn sm" data-mine-del="${esc(l.id)}">Remove</button></div>
+    </div></li>`; }).join("");
+  const back=miles(prev,end); total+=back;
+  const gm="https://www.google.com/maps/dir/"+[T.from, ...ls.map(l=>`${l.city}, ${l.stateCode}`), T.end||T.from].map(encodeURIComponent).join("/");
+  return `<h2>Your tour <small>${ls.length} gig${ls.length===1?"":"s"}</small></h2>
+    <ol class="tstops">${items}</ol>
+    <p class="small muted">${Math.round(back)} mi from the last gig to ${T.endPt?esc((T.endPt.label||T.end).split(",")[0]):"home"}. About ${Math.round(total)} miles straight-line in all; real driving is longer. Nothing here is booked.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary" href="${esc(gm)}" target="_blank" rel="noopener">Open in Google Maps</a><button class="btn" type="button" id="mine-clear">Start over</button></div>`;
+}
+// redraw just the tour panel and the line on the map, without rebuilding the page
+function refreshMine(){
+  const el=$("#tour-mine"); if (el) el.innerHTML=mineHtml();
+  const tm=S.tm; if (!tm || !tm.map || !window.L) return;
+  tm.mineLayer.clearLayers();
+  const P=S.tour.plan, ls=mineLeads(), pts=[P.pts[0], ...ls, P.pts[P.pts.length-1]].map(p=>[p.lat,p.lng]);
+  if (ls.length) L.polyline(pts,{color:"#1f5f53",weight:4,opacity:.9}).addTo(tm.mineLayer);
+  ls.forEach((l,i)=>L.marker([l.lat,l.lng],{icon:L.divIcon({className:"tpin",html:String(i+1),iconSize:[26,26]}),zIndexOffset:1000}).bindPopup(()=>venuePop(l)).addTo(tm.mineLayer));
+  document.querySelectorAll(".tall-list [data-mine-add]").forEach(b=>{ if ((S.tour.mine||[]).includes(b.dataset.mineAdd)) b.outerHTML='<span class="pill">In your tour</span>'; });
+}
+function venuePop(l){
+  const mine=S.tour.mine||[], k=mine.indexOf(l.id);
+  return `<div class="tpop"><b>${esc(l.name)}</b><br>${esc(l.city||"")}, ${esc(l.stateCode||"")}${l.seats?` · ${l.seats} seats`:""}<br>${esc(myRating(l))}${l.priority==="High"?" · High priority":""}${l.playedBefore?"<br>Played here before":""}
+    <div class="tpop-btns">${k>=0?`<span class="small">Gig ${k+1} in your tour</span> <button type="button" class="btn sm" data-mine-del="${esc(l.id)}">Remove</button>`:`<button type="button" class="btn sm primary" data-mine-add="${esc(l.id)}">Add as gig ${mine.length+1}</button>`}
+    <a href="#" data-open="${esc(l.id)}">Open venue</a></div></div>`;
+}
+function mineAdd(id){ const T=S.tour; T.mine=[...(T.mine||[]).filter(x=>x!==id), id]; saveTour(); S.tm?.map?.closePopup(); refreshMine(); }
+function mineDel(id){ const T=S.tour; T.mine=(T.mine||[]).filter(x=>x!==id); saveTour(); S.tm?.map?.closePopup(); refreshMine(); render(); }
+function mineUp(i){ const a=S.tour.mine; if (i>0) [a[i-1],a[i]]=[a[i],a[i-1]]; saveTour(); refreshMine(); }
 async function loadLeaflet(){
   if (window.L) return;
   const css=document.createElement("link"); css.rel="stylesheet"; css.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(css);
@@ -980,20 +1033,19 @@ async function drawTourMap(){
   const el=$("#tour-map"), P=S.tour.plan; if (!el || !P) return;
   try { await loadLeaflet(); } catch { el.innerHTML='<p class="empty small">The map could not load. The list still works.</p>'; return; }
   if (!document.body.contains(el)) return;
-  const map=L.map(el,{scrollWheelZoom:false}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18, attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
-  const picks=tourStops(), picked=new Set(picks.map(s=>s.pick.l.id)), alts=new Set(P.slots.flatMap(s=>s.alts.map(a=>a.l.id)));
-  const pop=l=>`<b>${esc(l.name)}</b><br>${esc(l.city||"")}, ${esc(l.stateCode||"")}<br>${esc(myRating(l))}<br><a href="#" data-open="${esc(l.id)}">Open venue</a>`;
+  const prevView = S.tm && S.tm.plan===P && S.tm.map ? {c:S.tm.map.getCenter(), z:S.tm.map.getZoom()} : null;
+  const map=L.map(el,{scrollWheelZoom:true}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18, attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
   const sketch=P.pts.map(p=>[p.lat,p.lng]);
-  L.polyline(sketch,{color:"#8a9590",weight:2,opacity:.7}).addTo(map); // the route you sketched
-  P.cands.forEach(c=>{ if (picked.has(c.l.id)) return; L.circleMarker([c.l.lat,c.l.lng],{radius:alts.has(c.l.id)?6:4, color:alts.has(c.l.id)?"#a86a00":"#8a9590", weight:1, fillOpacity:alts.has(c.l.id)?.7:.4}).bindPopup(pop(c.l)).addTo(map); });
+  L.polyline(sketch,{color:"#8a9590",weight:2,opacity:.6,dashArray:"2 6"}).addTo(map); // the route you sketched
   (S.tour.stops||[]).forEach(x=>{ if (x.pt) L.circle([x.pt.lat,x.pt.lng],{radius:(+S.tour.radius||50)*1609.34, color:"#444", weight:1, opacity:.5, dashArray:"4 4", fill:true, fillOpacity:.04, interactive:false}).addTo(map); });
-  (S.tour.stops||[]).forEach((x,i)=>{ if (x.pt) L.marker([x.pt.lat,x.pt.lng],{icon:L.divIcon({className:"tpin turn",html:String.fromCharCode(65+i),iconSize:[26,26]})}).bindPopup(`Stop ${String.fromCharCode(65+i)}: ${esc(x.pt.label||x.q)}${x.play?" (play here)":""}`).addTo(map); });
+  P.cands.forEach(c=>{ const l=c.l, big=l.vetVerdict==="Great fit"||l.vetVerdict==="Good fit";
+    L.circleMarker([l.lat,l.lng],{radius:big?8:6, color:"#fff", weight:1.5, fillColor:rcol(l), fillOpacity:.95}).bindPopup(()=>venuePop(l)).addTo(map); });
+  (S.tour.stops||[]).forEach((x,i)=>{ if (x.pt) L.marker([x.pt.lat,x.pt.lng],{icon:L.divIcon({className:"tpin turn",html:String.fromCharCode(65+i),iconSize:[22,22]}),interactive:false,opacity:.75}).addTo(map); });
   if (S.tour.endPt) L.marker([S.tour.endPt.lat,S.tour.endPt.lng],{icon:L.divIcon({className:"tpin turn",html:"⚑",iconSize:[26,26]})}).bindPopup("End: "+esc(S.tour.endPt.label||S.tour.end)).addTo(map);
-  const home=L.divIcon({className:"tpin home",html:"★",iconSize:[26,26]}); L.marker([P.pts[0].lat,P.pts[0].lng],{icon:home}).bindPopup("Start: "+esc(S.tour.fromPt?.label||S.tour.from)).addTo(map);
-  P.slots.forEach((s,i)=>{ if(!s.pick) return; const l=s.pick.l; L.marker([l.lat,l.lng],{icon:L.divIcon({className:"tpin",html:String(i+1),iconSize:[26,26]})}).bindPopup(pop(l)).addTo(map); });
-  const line=[sketch[0], ...picks.map(s=>[s.pick.l.lat,s.pick.l.lng]), sketch[sketch.length-1]];
-  L.polyline(line,{color:"#1f5f53",weight:3,opacity:.85,dashArray:"6 6"}).addTo(map);
-  map.fitBounds(L.latLngBounds([...line,...sketch]).pad(0.12));
+  L.marker([P.pts[0].lat,P.pts[0].lng],{icon:L.divIcon({className:"tpin home",html:"★",iconSize:[26,26]})}).bindPopup("Start: "+esc(S.tour.fromPt?.label||S.tour.from)).addTo(map);
+  S.tm={map, plan:P, mineLayer:L.layerGroup().addTo(map)};
+  if (prevView) map.setView(prevView.c, prevView.z); else map.fitBounds(L.latLngBounds([...sketch, ...P.cands.map(c=>[c.l.lat,c.l.lng])]).pad(0.08));
+  refreshMine();
 }
 // copy what's typed in the form into S.tour (so adding/removing a stop keeps your typing)
 function readTourForm(){
@@ -1659,6 +1711,11 @@ document.addEventListener("click", e => {
   const copy = t.closest("[data-copy]"); if (copy) { copyText(copy.dataset.copy, copy); return; }
   const evb = t.closest("[data-event]"); if (evb) { e.stopPropagation(); const ev = S.events.find(x=>x.id===evb.dataset.event); if (ev) openEventForm(ev); return; }
   const tt = t.closest("[data-tour-to]"); if (tt) { const l = S.leads.get(tt.dataset.tourTo); if (l) { S.tour.stops = [...(S.tour.stops||[]), {q:`${l.city||""}, ${l.stateCode||""}`, pt:{lat:l.lat, lng:l.lng, label:`${l.city||""}, ${STATE_NAMES[l.stateCode]||l.stateCode||""}`}, play:true}]; S.tour.plan = null; saveTour(); toast(`Added ${l.city||l.name} as a stop`); go("tour"); } return; }
+  const ma = t.closest("[data-mine-add]"); if (ma) { e.preventDefault(); mineAdd(ma.dataset.mineAdd); return; }
+  const md = t.closest("[data-mine-del]"); if (md) { e.preventDefault(); mineDel(md.dataset.mineDel); return; }
+  const mu = t.closest("[data-mine-up]"); if (mu) { mineUp(+mu.dataset.mineUp); return; }
+  if (t.closest("#mine-clear")) { S.tour.mine=[]; saveTour(); refreshMine(); render(); return; }
+  if (t.closest("#sugg-use")) { S.tour.mine=tourStops().map(s=>s.pick.l.id); saveTour(); refreshMine(); render(); return; }
   if (t.closest("#tr-addstop")) { readTourForm(); S.tour.stops=[...(S.tour.stops||[]), {q:"", pt:null, play:false}]; saveTour(); render(); setTimeout(()=>$("#tr-stop-"+(S.tour.stops.length-1))?.focus(),0); return; }
   const tdel = t.closest("[data-stop-del]"); if (tdel) { readTourForm(); S.tour.stops.splice(+tdel.dataset.stopDel,1); S.tour.plan=null; saveTour(); render(); return; }
   const tup = t.closest("[data-stop-up]"); if (tup) { readTourForm(); const i=+tup.dataset.stopUp, a=S.tour.stops; [a[i-1],a[i]]=[a[i],a[i-1]]; S.tour.plan=null; saveTour(); render(); return; }
