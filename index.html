@@ -112,7 +112,10 @@ main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px
 .tstop{display:flex;gap:10px;align-items:flex-start}
 .tnum,.tpin{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none;font-size:13px}
 .tpin{border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
-.tpin.home{background:#b3261e}.tpin.turn{background:#444;font-size:15px}
+.tpin.home{background:#b3261e}.tpin.turn{background:#444;font-size:13px}
+.troute{display:grid;gap:10px;margin:12px 0}.tstops-edit{border-left:3px solid var(--line,#ddd);padding:2px 0 4px 12px}
+.tstop-row{display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap}.tstop-row .field{flex:1 1 200px;min-width:0}
+.tletter{width:22px;height:22px;border-radius:50%;background:#444;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
 .talts{margin-top:4px;color:var(--muted)}
 .tbtns{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}.btn.sm{font-size:12px;padding:3px 9px}
 .linkish{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer;font:inherit}
@@ -815,12 +818,13 @@ function viewStates(){
 }
 
 /* ---------- Tour planner ---------- */
-// Suggests venues along a straight line from a start city to a turnaround city and back.
+// Suggests venues along a route you sketch: start, any number of stops, then the end (or back home).
 // Distances are straight-line ("as the crow flies"); Google Maps gives real driving times.
 const RANK = {"Great fit":0,"Good fit":1,"Possible":2,"Needs confirmation":3,"All venues":99};
 const MINS = ["Great fit","Good fit","Possible","Needs confirmation","All venues"];
 S.tour = (()=>{ try { return {plan:null, ...JSON.parse(localStorage.getItem("tm-tour")||"{}"), plan:null}; } catch { return {plan:null}; } })();
 Object.entries({from:"Nashville, TN", to:"", gigs:5, min:"Good fit", corridor:75, includePlayed:false, skip:[]}).forEach(([k,v]) => { if (S.tour[k]==null || S.tour[k]==="") S.tour[k] = v; });
+if (!Array.isArray(S.tour.stops)) { S.tour.stops = S.tour.to ? [{q:S.tour.to, pt:S.tour.toPt||null, play:false}] : []; } if (S.tour.end==null) S.tour.end=""; delete S.tour.to; delete S.tour.toPt;
 const saveTour = () => { try { const {plan, ...rest} = S.tour; localStorage.setItem("tm-tour", JSON.stringify(rest)); } catch {} };
 const miles = (a,b) => { const R=3958.8, r=x=>x*Math.PI/180, dLat=r(b.lat-a.lat), dLng=r(b.lng-a.lng);
   const h=Math.sin(dLat/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(h)); };
@@ -858,73 +862,109 @@ async function geocode(q){
   if (best.length===1) { const c=best[0].c; return {lat:c[2], lng:c[3], label:`${c[0]}, ${STATE_NAMES[c[1]]}`, typed:city}; }
   return {suggest: scored.slice(0,4).map(x => `${x.c[0]}, ${x.c[1]}`)};
 }
-function planTour(A,B,fixed={}){
-  const T=S.tour, L=miles(A,B), maxRank=RANK[T.min]??1, n=Math.max(1,Math.min(12,+T.gigs||5));
+// Route = start -> stop 1 -> stop 2 ... -> end (end defaults to the start, for a loop).
+// Each venue is measured against the nearest leg; "s" is how many miles along the whole route it sits.
+function routePts(){ const T=S.tour; return [T.fromPt, ...(T.stops||[]).map(x=>x.pt), T.endPt||T.fromPt]; }
+function alongRoute(pts, P){
+  let best=null, acc=0;
+  for (let i=0;i<pts.length-1;i++){ const A=pts[i], B=pts[i+1], len=miles(A,B), r=alongLine(A,B,P), ct=Math.max(0,Math.min(1,r.t));
+    if (!best || r.d<best.d) best={d:r.d, s:acc+ct*len, leg:i}; acc+=len; }
+  return best;
+}
+function legOfS(cum, s){ let i=0; while (i<cum.length-2 && s>cum[i+1]) i++; return i; }
+function planTour(fixed={}){
+  const T=S.tour, pts=routePts(), maxRank=RANK[T.min]??1, n=Math.max(1,Math.min(20,+T.gigs||5)), corr=+T.corridor||75;
+  const cum=[0]; for (let i=0;i<pts.length-1;i++) cum.push(cum[i]+miles(pts[i],pts[i+1])); const Ltot=cum[cum.length-1]||1;
+  const home=pts[0], endPt=pts[pts.length-1];
   const cands=[...S.leads.values()].filter(l => kindOf(l)==="venue" && l.lat!=null && (RANK[l.vetVerdict]??9)<=maxRank && l.vetVerdict!=="Closed" && !["Declined","Do not contact"].includes(l.status)
     && !(T.skip||[]).includes(l.id) && (T.includePlayed || !l.playedBefore))
-    .map(l => ({l, ...alongLine(A,B,l)})).filter(c => c.t>-0.05 && c.t<1.05 && c.d<=(+T.corridor||75));
-  const nOut=Math.ceil(n/2), nBack=n-nOut, targets=[];
-  for (let i=1;i<=nOut;i++) targets.push({leg:"Out", t:i/nOut, ti:targets.length});
-  for (let j=1;j<=nBack;j++) targets.push({leg:"Back", t:1-(j-0.5)/(nBack+0.5), ti:targets.length});
-  const used=new Set(), score=(c,tg)=> Math.min(RANK[c.l.vetVerdict]??4,4)*1.5 + (c.l.priority==="High"?-0.5:c.l.priority==="Low"?0.5:0) + Math.abs(c.t-tg.t)*L/75 + c.d/100
-    + (miles(A,c.l) < 60 ? 4 : 0); // a room near home isn't a tour stop
-  // stops you kept stay where they are
-  targets.forEach(tg => { const c = fixed[tg.ti] && cands.find(c=>c.l.id===fixed[tg.ti]); if (c) { tg.fixedPick = c; used.add(c.l.id); } });
-  const slots=targets.map(tg => { if (tg.fixedPick) { const pick=tg.fixedPick; return {...tg, pick, alts:cands.filter(c=>!used.has(c.l.id)).sort((a,b)=>score(a,tg)-score(b,tg)).slice(0,6)}; }
-    const ranked=cands.filter(c=>!used.has(c.l.id)).sort((a,b)=>score(a,tg)-score(b,tg)); const pick=ranked[0]; if (pick) used.add(pick.l.id); return {...tg, pick, alts:ranked.slice(1,7)}; });
-  // put stops in driving order: out by distance from home, back by distance from the turnaround
-  const ord=s=>!s.pick?(s.leg==="Out"?s.t:2-s.t):(s.leg==="Out"?s.pick.t:2-s.pick.t);
-  slots.sort((a,b)=>ord(a)-ord(b));
-  return {A,B,L,cands,slots};
+    .map(l => ({l, ...alongRoute(pts,l)})).filter(c => c.d<=corr);
+  // "Play here" stops get their own gig; the rest are spread evenly along the whole route
+  const plays=(T.stops||[]).map((x,i)=>({x,i})).filter(o=>o.x.play).slice(0,n);
+  const m=n-plays.length, targets=[];
+  plays.forEach(o=>targets.push({kind:"play", s:cum[o.i+1], at:pts[o.i+1], label:o.x.pt?.label||o.x.q}));
+  for (let i=1;i<=m;i++) targets.push({kind:"free", s:Ltot*i/(m+1)});
+  targets.sort((a,b)=>a.s-b.s); targets.forEach((tg,i)=>{ tg.ti=i; tg.leg=legOfS(cum,tg.s); });
+  const nearHome = l => miles(home,l)<60 || miles(endPt,l)<60;
+  const score=(c,tg)=> Math.min(RANK[c.l.vetVerdict]??4,4)*1.5 + (c.l.priority==="High"?-0.5:c.l.priority==="Low"?0.5:0) + c.d/100
+    + (tg.kind==="play" ? miles(tg.at,c.l)/20 + (miles(tg.at,c.l)>40?6:0) : Math.abs(c.s-tg.s)/75 + (nearHome(c.l)?4:0));
+  const used=new Set();
+  targets.forEach(tg => { const c = fixed[tg.ti] && cands.find(c=>c.l.id===fixed[tg.ti]); if (c) { tg.fixedPick=c; used.add(c.l.id); } });
+  // fill "play here" towns first so they get the room in that town
+  const order=[...targets].sort((a,b)=>(a.kind==="play"?0:1)-(b.kind==="play"?0:1));
+  const pickedL=()=>targets.filter(t=>t.pick||t.fixedPick).map(t=>(t.pick||t.fixedPick).l);
+  const crowd=c=>pickedL().some(p=>miles(p,c.l)<40)?3:0; // don't book two gigs in the same metro
+  order.forEach(tg => { const ranked=cands.filter(c=>!used.has(c.l.id)).map(c=>({c,v:score(c,tg)+crowd(c)})).sort((a,b)=>a.v-b.v).map(x=>x.c);
+    if (tg.fixedPick) { tg.pick=tg.fixedPick; tg.alts=ranked.slice(0,6); return; }
+    tg.pick=ranked[0]; if (tg.pick) used.add(tg.pick.l.id); tg.alts=ranked.slice(1,7); });
+  const slots=targets.sort((a,b)=>(a.pick?a.pick.s:a.s)-(b.pick?b.pick.s:b.s));
+  return {pts, cum, L:Ltot, cands, slots};
 }
-function tourReplan(){ const P=S.tour.plan; if (!P) return render(); const fixed={}; P.slots.forEach(s=>{ if (s.pick) fixed[s.ti]=s.pick.l.id; }); S.tour.plan=planTour(P.A,P.B,fixed); render(); }
+function tourReplan(){ const P=S.tour.plan; if (!P) return render(); const fixed={}; P.slots.forEach(s=>{ if (s.pick) fixed[s.ti]=s.pick.l.id; }); S.tour.plan=planTour(fixed); render(); }
 async function tourDrop(id, played){
   const P=S.tour.plan, l=S.leads.get(id); if (!P || !l) return;
   if (played) { if (!(await write(() => leadRef(id).update({playedBefore:true, updatedAt:new Date().toISOString()}), `Marked: you've played ${l.name}`))) return; l.playedBefore = true; }
   if (!played || S.tour.includePlayed) { S.tour.skip = [...new Set([...(S.tour.skip||[]), id])]; saveTour(); }
   const fixed={}; P.slots.forEach(s=>{ if (s.pick && s.pick.l.id!==id) fixed[s.ti]=s.pick.l.id; });
-  S.tour.plan=planTour(P.A,P.B,fixed); render();
+  S.tour.plan=planTour(fixed); render();
 }
 function tourStops(){ const P=S.tour.plan; if (!P) return []; return P.slots.filter(s=>s.pick); }
+function placeName(pt, q){ return (pt?.label||q||"").replace(/,\s*[^,]+$/, m => m); }
 function viewTour(){
-  const T=S.tour, P=T.plan;
+  const T=S.tour, P=T.plan, stops=T.stops||[];
+  const stopRows = stops.map((x,i)=>`<div class="tstop-row">
+      <span class="tletter">${String.fromCharCode(65+i)}</span>
+      <input class="field" id="tr-stop-${i}" value="${esc(x.q||"")}" placeholder="City, ST" aria-label="Stop ${i+1}">
+      <label class="small" title="Book a gig in this town, not just drive through it"><input type="checkbox" id="tr-play-${i}" ${x.play?"checked":""} style="width:auto"> Play here</label>
+      ${i>0?`<button type="button" class="btn sm" data-stop-up="${i}" title="Move up" aria-label="Move stop up">↑</button>`:""}
+      <button type="button" class="btn sm" data-stop-del="${i}" title="Remove this stop" aria-label="Remove stop">✕</button>
+    </div>`).join("");
   const form = `<form id="tour-form" class="panel tour-form">
-    <h2>Plan a tour <small>suggests your best-rated venues along the way, out and back</small></h2>
+    <h2>Plan a tour <small>sketch the route with as many stops as you like; it finds your best-rated venues along every leg</small></h2>
+    <div class="troute">
+      <label>Start<input class="field" id="tr-from" value="${esc(T.from)}" placeholder="City, ST"></label>
+      <div class="tstops-edit"><div class="small muted" style="margin-bottom:4px">Stops along the way, in order</div>${stopRows||`<p class="small muted" style="margin:0 0 6px">No stops yet. Add the towns you want the route to pass through.</p>`}
+        <button type="button" class="btn sm" id="tr-addstop">+ Add a stop</button></div>
+      <label>End<input class="field" id="tr-end" value="${esc(T.end||"")}" placeholder="Back to the start"></label>
+    </div>
     <div class="tgrid">
-      <label>Start and end<input class="field" id="tr-from" value="${esc(T.from)}" placeholder="City, ST"></label>
-      <label>Go as far as<input class="field" id="tr-to" value="${esc(T.to)}" placeholder="City, ST, e.g. Jacksonville, FL" required></label>
-      <label>Gigs<input class="field" id="tr-gigs" type="number" min="1" max="12" value="${esc(T.gigs)}"></label>
+      <label>Gigs<input class="field" id="tr-gigs" type="number" min="1" max="20" value="${esc(T.gigs)}"></label>
       <label>Lowest rating<select class="field" id="tr-min">${MINS.map(m=>`<option ${T.min===m?"selected":""}>${m}</option>`).join("")}</select></label>
       <label>Miles off the route<input class="field" id="tr-corr" type="number" min="10" max="300" step="5" value="${esc(T.corridor)}"></label>
     </div>
     <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tr-played" ${T.includePlayed?"checked":""} style="width:auto"> Include places we've already played (return dates)</label>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="submit">Find venues</button><button class="btn" type="button" id="tr-clear">Clear</button><span class="small muted" id="tr-msg">${esc(T.note||"")}</span>${(T.skip||[]).length?`<span class="small muted">${T.skip.length} skipped · <a href="#" id="tr-unskip">bring them back</a></span>`:""}</div>
   </form>`;
-  if (!P) return `<div class="tour">${form}<p class="small muted">Tip: open any venue and tap <b>Plan a tour here</b> to use it as the turnaround.</p></div>`;
-  const stops=tourStops(); let prev=P.A, total=0;
-  const legs=stops.map(s=>{ const m=miles(prev,s.pick.l); total+=m; prev=s.pick.l; return m; }); const home=miles(prev,P.A); total+=home;
-  const gm="https://www.google.com/maps/dir/"+[T.from, ...stops.map(s=>`${s.pick.l.city}, ${s.pick.l.stateCode}`), T.from].map(encodeURIComponent).join("/");
-  const pickedIds=new Set(stops.map(s=>s.pick.l.id));
-  const rows=P.slots.map((s,i)=>{ const alts=s.alts.filter(a=>!pickedIds.has(a.l.id)).slice(0,3); if(!s.pick) return `<li class="tstop"><div class="tnum">${i+1}</div><div><b>No venue found</b> <span class="small muted">near this part of the ${s.leg.toLowerCase()} leg. Try more miles off the route or a lower rating.</span></div></li>`;
-    const l=s.pick.l, k=stops.indexOf(s);
+  if (!P) return `<div class="tour">${form}<p class="small muted">Tip: open any venue and tap <b>Plan a tour here</b> to add it as a stop.</p></div>`;
+  const picks=tourStops(); let prev=P.pts[0], total=0;
+  const legs=picks.map(s=>{ const m=miles(prev,s.pick.l); total+=m; prev=s.pick.l; return m; }); const homeLeg=miles(prev,P.pts[P.pts.length-1]); total+=homeLeg;
+  const endLabel = T.endPt ? (T.endPt.label||T.end) : "back to "+(T.fromPt?.label||T.from);
+  const gm="https://www.google.com/maps/dir/"+[T.from, ...picks.map(s=>`${s.pick.l.city}, ${s.pick.l.stateCode}`), T.end||T.from].map(encodeURIComponent).join("/");
+  const pickedIds=new Set(picks.map(s=>s.pick.l.id));
+  const legName = i => `${(i===0?(T.fromPt?.label||T.from):(stops[i-1]?.pt?.label||stops[i-1]?.q)).split(",")[0]} to ${(i<stops.length?(stops[i].pt?.label||stops[i].q):(T.endPt?(T.endPt.label||T.end):(T.fromPt?.label||T.from))).split(",")[0]}`;
+  const rows=P.slots.map((s,i)=>{ const alts=s.alts.filter(a=>!pickedIds.has(a.l.id)).slice(0,3);
+    const where = s.kind==="play" ? `Playing ${esc((s.label||"").split(",")[0])}` : `${esc(legName(s.leg))} leg`;
+    if(!s.pick) return `<li class="tstop"><div class="tnum">${i+1}</div><div><b>No venue found</b> <span class="small muted">${where}. Try more miles off the route or a lower rating.</span></div></li>`;
+    const l=s.pick.l, k=picks.indexOf(s);
     return `<li class="tstop"><div class="tnum">${i+1}</div><div style="min-width:0">
-      <div class="small muted">${s.leg==="Out"?"Heading out":"Heading home"} · ${Math.round(legs[k])} mi straight-line from the last stop${s.pick.d>15?` · ${Math.round(s.pick.d)} mi off the route`:""}</div>
+      <div class="small muted">${where} · ${Math.round(legs[k])} mi straight-line from the last stop${s.pick.d>15?` · ${Math.round(s.pick.d)} mi off the route`:""}</div>
       <a href="#" data-open="${esc(l.id)}" class="nm">${esc(l.name)}</a> ${ratingPill(l)}${l.priority==="High"?` <span class="pill">High priority</span>`:""}
       <div class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")}${l.seats?` · ${l.seats} seats`:""}${(l.status&&l.status!=="Not contacted")?` · ${esc(l.status)}`:""}${l.playedBefore?" · played here before":""}</div>
       <div class="tbtns"><button type="button" class="btn sm" data-tour-skip="${esc(l.id)}">Skip</button>${l.playedBefore?"":`<button type="button" class="btn sm" data-tour-played="${esc(l.id)}">We've played here</button>`}</div>
       ${alts.length?`<div class="talts small">Or: ${alts.map(a=>`<button type="button" class="linkish" data-tour-swap="${i}" data-lead="${esc(a.l.id)}">${esc(a.l.name)} (${esc(a.l.city||"")}, ${esc(a.l.vetVerdict||"")})</button>`).join(" · ")}</div>`:""}
     </div></li>`; }).join("");
+  const routeText = [T.fromPt?.label||T.from, ...stops.map(x=>x.pt?.label||x.q)].map(x=>`<b>${esc(x)}</b>`).join(" → ") + ` → <b>${esc(endLabel)}</b>`;
   return `<div class="tour">${form}
     <div class="tour-out">
-      <div id="tour-map" class="tour-map" role="img" aria-label="Map of suggested tour stops"></div>
-      <section class="panel"><h2>Suggested route <small>${stops.length} of ${P.slots.length} stops · ${P.cands.length} venues in range</small></h2>
-        <p class="small" style="margin-top:10px">From <b>${esc(T.fromPt?.label||T.from)}</b>, turning around at <b>${esc(T.toPt?.label||T.to)}</b>, about ${Math.round(P.L)} miles away straight-line.</p>
+      <div id="tour-map" class="tour-map" role="img" aria-label="Map of the route and suggested stops"></div>
+      <section class="panel"><h2>Suggested route <small>${picks.length} of ${P.slots.length} gigs · ${P.cands.length} venues in range</small></h2>
+        <p class="small" style="margin-top:10px">${routeText}. About ${Math.round(P.L)} miles straight-line for the route you sketched.</p>
         <ol class="tstops">${rows}</ol>
-        <p class="small muted">About ${Math.round(total)} miles straight-line in all, ${Math.round(home)} of them home from the last stop. Real driving is longer, so check the route in Google Maps. These are suggestions only; none of these dates are booked.</p>
+        <p class="small muted">About ${Math.round(total)} miles straight-line through these gigs, ${Math.round(homeLeg)} of them from the last gig to the end. Real driving is longer, so check the route in Google Maps. These are suggestions only; none of these dates are booked.</p>
         <a class="btn" href="${esc(gm)}" target="_blank" rel="noopener">Open route in Google Maps</a>
         <details class="tall"><summary>See all ${P.cands.length} venues in range</summary>
-          <p class="small muted">Every venue within ${T.corridor} miles of the route at your chosen rating, in order from home to the turnaround. Grey dots on the map are these venues.</p>
-          <ol class="tall-list">${[...P.cands].sort((a,b)=>a.t-b.t).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> ${ratingPill(l)}${pickedIds.has(l.id)?' <span class="pill">On the route</span>':''} <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${Math.round(c.d)} mi off the route${l.playedBefore?" · played here before":""}</span></li>`}).join("")}</ol>
+          <p class="small muted">Every venue within ${T.corridor} miles of your route at your chosen rating, in order along the route. Grey dots on the map are these venues.</p>
+          <ol class="tall-list">${[...P.cands].sort((a,b)=>a.s-b.s).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> ${ratingPill(l)}${pickedIds.has(l.id)?' <span class="pill">On the route</span>':''} <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${Math.round(c.d)} mi off the route${l.playedBefore?" · played here before":""}</span></li>`}).join("")}</ol>
         </details>
       </section>
     </div></div>`;
@@ -939,32 +979,44 @@ async function drawTourMap(){
   try { await loadLeaflet(); } catch { el.innerHTML='<p class="empty small">The map could not load. The list still works.</p>'; return; }
   if (!document.body.contains(el)) return;
   const map=L.map(el,{scrollWheelZoom:false}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18, attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
-  const stops=tourStops(), picked=new Set(stops.map(s=>s.pick.l.id)), alts=new Set(P.slots.flatMap(s=>s.alts.map(a=>a.l.id)));
+  const picks=tourStops(), picked=new Set(picks.map(s=>s.pick.l.id)), alts=new Set(P.slots.flatMap(s=>s.alts.map(a=>a.l.id)));
   const pop=l=>`<b>${esc(l.name)}</b><br>${esc(l.city||"")}, ${esc(l.stateCode||"")}<br>${esc(myRating(l))}<br><a href="#" data-open="${esc(l.id)}">Open venue</a>`;
+  const sketch=P.pts.map(p=>[p.lat,p.lng]);
+  L.polyline(sketch,{color:"#8a9590",weight:2,opacity:.7}).addTo(map); // the route you sketched
   P.cands.forEach(c=>{ if (picked.has(c.l.id)) return; L.circleMarker([c.l.lat,c.l.lng],{radius:alts.has(c.l.id)?6:4, color:alts.has(c.l.id)?"#a86a00":"#8a9590", weight:1, fillOpacity:alts.has(c.l.id)?.7:.4}).bindPopup(pop(c.l)).addTo(map); });
-  L.marker([P.B.lat,P.B.lng],{icon:L.divIcon({className:"tpin turn",html:"⟲",iconSize:[26,26]})}).bindPopup("Turnaround: "+esc(S.tour.toPt?.label||S.tour.to)).addTo(map);
-  const home=L.divIcon({className:"tpin home",html:"★",iconSize:[26,26]}); L.marker([P.A.lat,P.A.lng],{icon:home}).bindPopup(esc(S.tour.from)).addTo(map);
+  (S.tour.stops||[]).forEach((x,i)=>{ if (x.pt) L.marker([x.pt.lat,x.pt.lng],{icon:L.divIcon({className:"tpin turn",html:String.fromCharCode(65+i),iconSize:[26,26]})}).bindPopup(`Stop ${String.fromCharCode(65+i)}: ${esc(x.pt.label||x.q)}${x.play?" (play here)":""}`).addTo(map); });
+  if (S.tour.endPt) L.marker([S.tour.endPt.lat,S.tour.endPt.lng],{icon:L.divIcon({className:"tpin turn",html:"⚑",iconSize:[26,26]})}).bindPopup("End: "+esc(S.tour.endPt.label||S.tour.end)).addTo(map);
+  const home=L.divIcon({className:"tpin home",html:"★",iconSize:[26,26]}); L.marker([P.pts[0].lat,P.pts[0].lng],{icon:home}).bindPopup("Start: "+esc(S.tour.fromPt?.label||S.tour.from)).addTo(map);
   P.slots.forEach((s,i)=>{ if(!s.pick) return; const l=s.pick.l; L.marker([l.lat,l.lng],{icon:L.divIcon({className:"tpin",html:String(i+1),iconSize:[26,26]})}).bindPopup(pop(l)).addTo(map); });
-  const line=[[P.A.lat,P.A.lng], ...stops.map(s=>[s.pick.l.lat,s.pick.l.lng]), [P.A.lat,P.A.lng]];
-  L.polyline(line,{color:"#1f5f53",weight:3,opacity:.8,dashArray:"6 6"}).addTo(map);
-  map.fitBounds(L.latLngBounds([...line,[P.B.lat,P.B.lng]]).pad(0.15));
+  const line=[sketch[0], ...picks.map(s=>[s.pick.l.lat,s.pick.l.lng]), sketch[sketch.length-1]];
+  L.polyline(line,{color:"#1f5f53",weight:3,opacity:.85,dashArray:"6 6"}).addTo(map);
+  map.fitBounds(L.latLngBounds([...line,...sketch]).pad(0.12));
+}
+// copy what's typed in the form into S.tour (so adding/removing a stop keeps your typing)
+function readTourForm(){
+  const T=S.tour; if (!$("#tour-form")) return;
+  const from=$("#tr-from").value.trim(), end=$("#tr-end").value.trim();
+  if (from!==T.from) T.fromPt=null; if (end!==(T.end||"")) T.endPt=null; T.from=from; T.end=end;
+  T.stops=(T.stops||[]).map((x,i)=>{ const q=($("#tr-stop-"+i)?.value||"").trim(); return {q, pt: q===x.q ? x.pt : null, play: !!$("#tr-play-"+i)?.checked}; });
+  Object.assign(T,{gigs:+$("#tr-gigs").value||5, min:$("#tr-min").value, corridor:+$("#tr-corr").value||75, includePlayed:$("#tr-played").checked});
 }
 function afterTour(){
   $("#tour-form")?.addEventListener("submit", async e => {
-    e.preventDefault(); const T=S.tour, msg=$("#tr-msg");
-    const to=$("#tr-to").value.trim(), from=$("#tr-from").value.trim();
-    Object.assign(T,{gigs:+$("#tr-gigs").value||5, min:$("#tr-min").value, corridor:+$("#tr-corr").value||75, includePlayed:$("#tr-played").checked});
-    if (to!==T.to) T.toPt=null; if (from!==T.from) T.fromPt=null; T.to=to; T.from=from; saveTour();
+    e.preventDefault(); readTourForm(); const T=S.tour, msg=$("#tr-msg");
+    T.stops=(T.stops||[]).filter(x=>x.q); saveTour();
+    if (!T.stops.length && !T.end) { msg.textContent="Add at least one stop, or an end town different from the start."; return; }
     T.note=""; msg.textContent="Finding the cities…";
-    try { T.fromPt = T.fromPt?.label ? T.fromPt : await geocode(from); T.toPt = T.toPt?.label ? T.toPt : await geocode(to); } catch { msg.textContent="Couldn't look up those cities. Check your connection and try again."; return; }
-    for (const [pt, typed, field] of [[T.fromPt, from, "tr-from"], [T.toPt, to, "tr-to"]]) {
-      if (pt?.suggest) { T.plan=null; if (field==="tr-from") T.fromPt=null; else T.toPt=null; render();
-        $("#tr-msg").innerHTML = `Couldn't find "${esc(typed)}". Did you mean: ${pt.suggest.map(x=>`<button type="button" class="linkish" data-tour-fix="${field}" data-place="${esc(x)}">${esc(x)}</button>`).join(" · ")}?`; return; }
-      if (!pt) { T.plan=null; render(); $("#tr-msg").textContent=`Couldn't find "${typed}". Check the spelling and use "City, ST", like Manhattan, KS.`; return; }
+    const places=[{get:()=>T.fromPt, set:v=>T.fromPt=v, q:T.from, field:"tr-from"},
+      ...T.stops.map((x,i)=>({get:()=>x.pt, set:v=>x.pt=v, q:x.q, field:"tr-stop-"+i})),
+      ...(T.end?[{get:()=>T.endPt, set:v=>T.endPt=v, q:T.end, field:"tr-end"}]:[])];
+    try { for (const p of places) if (!p.get()?.label) p.set(await geocode(p.q)); } catch { msg.textContent="Couldn't look up those cities. Check your connection and try again."; return; }
+    for (const p of places) { const pt=p.get();
+      if (pt?.suggest) { p.set(null); T.plan=null; render();
+        $("#tr-msg").innerHTML = `Couldn't find "${esc(p.q)}". Did you mean: ${pt.suggest.map(x=>`<button type="button" class="linkish" data-tour-fix="${p.field}" data-place="${esc(x)}">${esc(x)}</button>`).join(" · ")}?`; return; }
+      if (!pt) { T.plan=null; render(); $("#tr-msg").textContent=`Couldn't find "${p.q}". Check the spelling and use "City, ST", like Manhattan, KS.`; return; }
     }
-    const fixes=[T.fromPt,T.toPt].filter(p=>p.typed).map(p=>`Using ${p.label} (you typed "${p.typed}").`);
-    T.note = fixes.join(" ");
-    T.plan=planTour(T.fromPt,T.toPt); render();
+    T.note = places.map(p=>p.get()).filter(p=>p.typed).map(p=>`Using ${p.label} (you typed "${p.typed}").`).join(" ");
+    saveTour(); T.plan=planTour(); render();
   });
   drawTourMap();
 }
@@ -1603,10 +1655,13 @@ document.addEventListener("click", e => {
   if (t.closest("[data-close]") || t.id==="scrim") { closeSheet(); return; }
   const copy = t.closest("[data-copy]"); if (copy) { copyText(copy.dataset.copy, copy); return; }
   const evb = t.closest("[data-event]"); if (evb) { e.stopPropagation(); const ev = S.events.find(x=>x.id===evb.dataset.event); if (ev) openEventForm(ev); return; }
-  const tt = t.closest("[data-tour-to]"); if (tt) { const l = S.leads.get(tt.dataset.tourTo); if (l) { S.tour.to = `${l.city||""}, ${l.stateCode||""}`; S.tour.toPt = {lat:l.lat, lng:l.lng, label:`${l.name}, ${l.city||""}, ${STATE_NAMES[l.stateCode]||l.stateCode||""}`}; S.tour.plan = null; go("tour"); } return; }
+  const tt = t.closest("[data-tour-to]"); if (tt) { const l = S.leads.get(tt.dataset.tourTo); if (l) { S.tour.stops = [...(S.tour.stops||[]), {q:`${l.city||""}, ${l.stateCode||""}`, pt:{lat:l.lat, lng:l.lng, label:`${l.city||""}, ${STATE_NAMES[l.stateCode]||l.stateCode||""}`}, play:true}]; S.tour.plan = null; saveTour(); toast(`Added ${l.city||l.name} as a stop`); go("tour"); } return; }
+  if (t.closest("#tr-addstop")) { readTourForm(); S.tour.stops=[...(S.tour.stops||[]), {q:"", pt:null, play:false}]; saveTour(); render(); setTimeout(()=>$("#tr-stop-"+(S.tour.stops.length-1))?.focus(),0); return; }
+  const tdel = t.closest("[data-stop-del]"); if (tdel) { readTourForm(); S.tour.stops.splice(+tdel.dataset.stopDel,1); S.tour.plan=null; saveTour(); render(); return; }
+  const tup = t.closest("[data-stop-up]"); if (tup) { readTourForm(); const i=+tup.dataset.stopUp, a=S.tour.stops; [a[i-1],a[i]]=[a[i],a[i-1]]; S.tour.plan=null; saveTour(); render(); return; }
   const tsk = t.closest("[data-tour-skip]"); if (tsk) { tourDrop(tsk.dataset.tourSkip, false); return; }
   const tplay = t.closest("[data-tour-played]"); if (tplay) { tourDrop(tplay.dataset.tourPlayed, true); return; }
-  if (t.closest("#tr-clear")) { const keepFrom=S.tour.from, keepFromPt=S.tour.fromPt; S.tour={plan:null, from:keepFrom||"Nashville, TN", fromPt:keepFromPt, to:"", toPt:null, gigs:5, min:"Good fit", corridor:75, includePlayed:false, skip:[]}; saveTour(); render(); return; }
+  if (t.closest("#tr-clear")) { const keepFrom=S.tour.from, keepFromPt=S.tour.fromPt; S.tour={plan:null, from:keepFrom||"Nashville, TN", fromPt:keepFromPt, stops:[], end:"", endPt:null, gigs:5, min:"Good fit", corridor:75, includePlayed:false, skip:[]}; saveTour(); render(); return; }
   const tfix = t.closest("[data-tour-fix]"); if (tfix) { $("#"+tfix.dataset.tourFix).value = tfix.dataset.place; $("#tour-form").requestSubmit(); return; }
   if (t.closest("#tr-unskip")) { e.preventDefault(); S.tour.skip = []; saveTour(); tourReplan(); return; }
   const ts = t.closest("[data-tour-swap]"); if (ts) { const i = +ts.dataset.tourSwap, id = ts.dataset.lead; const sl = S.tour.plan.slots[i]; const j = sl.alts.findIndex(a=>a.l.id===id); if (j>=0) { const alt = sl.alts.splice(j,1)[0]; if (sl.pick) sl.alts.unshift(sl.pick); sl.pick = alt; } render(); return; }
