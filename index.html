@@ -325,7 +325,8 @@ table.states tr:hover td{background:var(--sunken)}
 @media (prefers-reduced-motion:no-preference){.row,.btn{transition:background .12s,border-color .12s}}
 .tall{margin-top:14px}.tall summary{cursor:pointer;font-weight:600}.tall-list{margin:8px 0 0;padding-left:22px;display:grid;gap:6px;max-height:420px;overflow:auto}
 .tour-mapcol{display:flex;flex-direction:column;gap:6px;position:sticky;top:70px}@media (max-width:860px){.tour-mapcol{position:static}}.tour-side{display:flex;flex-direction:column;gap:12px;min-width:0}
-.tlegend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted,#666)}.tlegend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+.tlegend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted,#666)}.tlegend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}.tlegend i.sq{border-radius:2px}
+.tfest{background:#e8660c;border:2px solid #fff;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .tsugg summary,.tall summary{cursor:pointer}.tpop{min-width:180px;line-height:1.45}.tpop-btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 </style>
 
@@ -902,7 +903,9 @@ function planTour(fixed={}){
     if (tg.fixedPick) { tg.pick=tg.fixedPick; tg.alts=ranked.slice(0,6); return; }
     tg.pick=ranked[0]; if (tg.pick) used.add(tg.pick.l.id); tg.alts=ranked.slice(1,7); });
   const slots=targets.sort((a,b)=>(a.pick?a.pick.s:a.s)-(b.pick?b.pick.s:b.s));
-  return {pts, cum, L:Ltot, cands, slots};
+  const fests = T.showFests===false ? [] : [...S.leads.values()].filter(l => kindOf(l)==="festival" && l.lat!=null && !["Closed","Poor fit"].includes(l.vetVerdict) && !["Declined","Do not contact"].includes(l.status))
+    .map(l => ({l, ...alongRoute(pts,l), near: Math.min(Infinity, ...stopPts.map(p=>miles(p,l)))})).filter(c => c.d<=corr || c.near<=rad);
+  return {pts, cum, L:Ltot, cands, fests, slots};
 }
 function tourReplan(){ const P=S.tour.plan; if (!P) return render(); const fixed={}; P.slots.forEach(s=>{ if (s.pick) fixed[s.ti]=s.pick.l.id; }); S.tour.plan=planTour(fixed); render(); }
 async function tourDrop(id, played){
@@ -964,7 +967,7 @@ function viewTour(){
     <div class="tour-out">
       <div class="tour-mapcol">
         <div id="tour-map" class="tour-map" role="application" aria-label="Map of venues in your areas. Click a venue to add it to your tour."></div>
-        <div class="tlegend small"><span><i style="background:${RCOL["Great fit"]}"></i>Great fit</span><span><i style="background:${RCOL["Good fit"]}"></i>Good fit</span><span><i style="background:${RCOL["Possible"]}"></i>Possible</span><span><i style="background:${RCOL.other}"></i>Other</span><span>Dashed circles are your stop areas.</span></div>
+        <div class="tlegend small"><b>Venues:</b><span><i style="background:${RCOL["Great fit"]}"></i>Great</span><span><i style="background:${RCOL["Good fit"]}"></i>Good</span><span><i style="background:${RCOL["Possible"]}"></i>Possible</span><span><i style="background:${RCOL.other}"></i>Other</span><span><b>Festivals:</b> <i class="sq" style="background:${FCOL}"></i>orange squares (${P.fests.length})</span><label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="tr-fests" ${T.showFests===false?"":"checked"} style="width:auto"> Show festivals</label><span>Dashed circles are your stop areas.</span></div>
       </div>
       <div class="tour-side">
         <section class="panel" id="tour-mine">${mineHtml()}</section>
@@ -973,6 +976,9 @@ function viewTour(){
           <ol class="tstops">${rows}</ol>
           <button class="btn" type="button" id="sugg-use">Use these as my tour</button>
         </details>
+        ${P.fests.length?`<details class="panel tall"><summary><b>${P.fests.length} festivals in range</b></summary>
+          <ol class="tall-list">${[...P.fests].sort((a,b)=>a.s-b.s).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${esc(l.eventDates||"dates unknown")}${l.playedBefore?" · played before":""}</span> ${mineSet.has(l.id)?'<span class="pill">In your tour</span>':`<button type="button" class="linkish small" data-mine-add="${esc(l.id)}">Add to tour</button>`}</li>`}).join("")}</ol>
+        </details>`:""}
         <details class="panel tall"><summary><b>All ${P.cands.length} venues in range</b></summary>
           <p class="small muted">Every venue within ${T.radius||50} miles of a stop or ${T.corridor} miles of the route between stops, at your chosen rating, in order along the route.</p>
           <ol class="tall-list">${[...P.cands].sort((a,b)=>a.s-b.s).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> ${ratingPill(l)} <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${Math.round(c.d)} mi off the route${l.playedBefore?" · played here before":""}</span> ${mineSet.has(l.id)?'<span class="pill">In your tour</span>':`<button type="button" class="linkish small" data-mine-add="${esc(l.id)}">Add to tour</button>`}</li>`}).join("")}</ol>
@@ -980,7 +986,7 @@ function viewTour(){
       </div>
     </div></div>`;
 }
-const RCOL={"Great fit":"#1e7a46","Good fit":"#2b7fb8","Possible":"#c98a16",other:"#8a9590"};
+const RCOL={"Great fit":"#0b3d91","Good fit":"#2f6fd0","Possible":"#7fa9e6",other:"#b8c4d6"}; const FCOL="#e8660c";
 const rcol=l=>RCOL[l.vetVerdict]||RCOL.other;
 // Your own tour: the gigs you click on the map, in driving order
 function mineLeads(){ return (S.tour.mine||[]).map(id=>S.leads.get(id)).filter(l=>l && l.lat!=null); }
@@ -994,7 +1000,7 @@ function mineHtml(){
   const items=ls.map((l,i)=>{ const m=miles(prev,l); total+=m; prev=l;
     return `<li class="tstop"><div class="tnum">${i+1}</div><div style="min-width:0">
       <div class="small muted">${Math.round(m)} mi straight-line from ${i?"the last gig":"the start"}</div>
-      <a href="#" data-open="${esc(l.id)}" class="nm">${esc(l.name)}</a> ${ratingPill(l)}
+      <a href="#" data-open="${esc(l.id)}" class="nm">${esc(l.name)}</a> ${kindOf(l)==="festival"?`<span class="pill" style="background:var(--festival-soft);color:var(--festival)">Festival${l.eventDates?" · "+esc(l.eventDates):""}</span>`:ratingPill(l)}
       <div class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")}${l.seats?` · ${l.seats} seats`:""}${(l.status&&l.status!=="Not contacted")?` · ${esc(l.status)}`:""}${l.playedBefore?" · played here before":""}</div>
       <div class="tbtns">${i?`<button type="button" class="btn sm" data-mine-up="${i}" aria-label="Move earlier">↑ Earlier</button>`:""}<button type="button" class="btn sm" data-mine-del="${esc(l.id)}">Remove</button></div>
     </div></li>`; }).join("");
@@ -1017,9 +1023,10 @@ function refreshMine(){
 }
 function venuePop(l){
   const mine=S.tour.mine||[], k=mine.indexOf(l.id);
-  return `<div class="tpop"><b>${esc(l.name)}</b><br>${esc(l.city||"")}, ${esc(l.stateCode||"")}${l.seats?` · ${l.seats} seats`:""}<br>${esc(myRating(l))}${l.priority==="High"?" · High priority":""}${l.playedBefore?"<br>Played here before":""}
+  const fest=kindOf(l)==="festival";
+  return `<div class="tpop">${fest?`<span class="pill" style="background:var(--festival-soft);color:var(--festival)">Festival</span><br>`:""}<b>${esc(l.name)}</b><br>${esc(l.city||"")}, ${esc(l.stateCode||"")}${l.seats?` · ${l.seats} seats`:""}${fest?`<br>Dates: ${esc(l.eventDates||"unknown")}${l.deadline?`<br>Deadline: ${esc(fmtDate(l.deadline))}`:""}`:""}<br>${esc(myRating(l))}${l.priority==="High"?" · High priority":""}${l.playedBefore?"<br>Played here before":""}
     <div class="tpop-btns">${k>=0?`<span class="small">Gig ${k+1} in your tour</span> <button type="button" class="btn sm" data-mine-del="${esc(l.id)}">Remove</button>`:`<button type="button" class="btn sm primary" data-mine-add="${esc(l.id)}">Add as gig ${mine.length+1}</button>`}
-    <a href="#" data-open="${esc(l.id)}">Open venue</a></div></div>`;
+    <a href="#" data-open="${esc(l.id)}">Open ${fest?"festival":"venue"}</a></div></div>`;
 }
 function mineAdd(id){ const T=S.tour; T.mine=[...(T.mine||[]).filter(x=>x!==id), id]; saveTour(); S.tm?.map?.closePopup(); refreshMine(); }
 function mineDel(id){ const T=S.tour; T.mine=(T.mine||[]).filter(x=>x!==id); saveTour(); S.tm?.map?.closePopup(); refreshMine(); render(); }
@@ -1038,8 +1045,9 @@ async function drawTourMap(){
   const sketch=P.pts.map(p=>[p.lat,p.lng]);
   L.polyline(sketch,{color:"#8a9590",weight:2,opacity:.6,dashArray:"2 6"}).addTo(map); // the route you sketched
   (S.tour.stops||[]).forEach(x=>{ if (x.pt) L.circle([x.pt.lat,x.pt.lng],{radius:(+S.tour.radius||50)*1609.34, color:"#444", weight:1, opacity:.5, dashArray:"4 4", fill:true, fillOpacity:.04, interactive:false}).addTo(map); });
-  P.cands.forEach(c=>{ const l=c.l, big=l.vetVerdict==="Great fit"||l.vetVerdict==="Good fit";
-    L.circleMarker([l.lat,l.lng],{radius:big?8:6, color:"#fff", weight:1.5, fillColor:rcol(l), fillOpacity:.95}).bindPopup(()=>venuePop(l)).addTo(map); });
+  P.cands.forEach(c=>{ const l=c.l, r={"Great fit":9,"Good fit":7.5,"Possible":6}[l.vetVerdict]||5;
+    L.circleMarker([l.lat,l.lng],{radius:r, color:"#fff", weight:1.5, fillColor:rcol(l), fillOpacity:.95}).bindPopup(()=>venuePop(l)).addTo(map); });
+  (P.fests||[]).forEach(c=>{ const l=c.l; L.marker([l.lat,l.lng],{icon:L.divIcon({className:"tfest",html:"",iconSize:[16,16]}),zIndexOffset:500,title:l.name}).bindPopup(()=>venuePop(l)).addTo(map); });
   (S.tour.stops||[]).forEach((x,i)=>{ if (x.pt) L.marker([x.pt.lat,x.pt.lng],{icon:L.divIcon({className:"tpin turn",html:String.fromCharCode(65+i),iconSize:[22,22]}),interactive:false,opacity:.75}).addTo(map); });
   if (S.tour.endPt) L.marker([S.tour.endPt.lat,S.tour.endPt.lng],{icon:L.divIcon({className:"tpin turn",html:"⚑",iconSize:[26,26]})}).bindPopup("End: "+esc(S.tour.endPt.label||S.tour.end)).addTo(map);
   L.marker([P.pts[0].lat,P.pts[0].lng],{icon:L.divIcon({className:"tpin home",html:"★",iconSize:[26,26]})}).bindPopup("Start: "+esc(S.tour.fromPt?.label||S.tour.from)).addTo(map);
@@ -1716,6 +1724,7 @@ document.addEventListener("click", e => {
   const mu = t.closest("[data-mine-up]"); if (mu) { mineUp(+mu.dataset.mineUp); return; }
   if (t.closest("#mine-clear")) { S.tour.mine=[]; saveTour(); refreshMine(); render(); return; }
   if (t.closest("#sugg-use")) { S.tour.mine=tourStops().map(s=>s.pick.l.id); saveTour(); refreshMine(); render(); return; }
+  if (t.id==="tr-fests") { S.tour.showFests=t.checked; saveTour(); S.tour.plan=planTour(); render(); return; }
   if (t.closest("#tr-addstop")) { readTourForm(); S.tour.stops=[...(S.tour.stops||[]), {q:"", pt:null, play:false}]; saveTour(); render(); setTimeout(()=>$("#tr-stop-"+(S.tour.stops.length-1))?.focus(),0); return; }
   const tdel = t.closest("[data-stop-del]"); if (tdel) { readTourForm(); S.tour.stops.splice(+tdel.dataset.stopDel,1); S.tour.plan=null; saveTour(); render(); return; }
   const tup = t.closest("[data-stop-up]"); if (tup) { readTourForm(); const i=+tup.dataset.stopUp, a=S.tour.stops; [a[i-1],a[i]]=[a[i],a[i-1]]; S.tour.plan=null; saveTour(); render(); return; }
