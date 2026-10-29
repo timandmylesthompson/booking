@@ -326,6 +326,7 @@ table.states tr:hover td{background:var(--sunken)}
 .tall{margin-top:14px}.tall summary{cursor:pointer;font-weight:600}.tall-list{margin:8px 0 0;padding-left:22px;display:grid;gap:6px;max-height:420px;overflow:auto}
 .tour-mapcol{display:flex;flex-direction:column;gap:6px;position:sticky;top:70px}@media (max-width:860px){.tour-mapcol{position:static}}.tour-side{display:flex;flex-direction:column;gap:12px;min-width:0}
 .tlegend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted,#666)}.tlegend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}.tlegend i.sq{border-radius:2px}
+.tshow{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:4px 0 8px}.tshow label{display:inline-flex;gap:6px;align-items:center}.tshow i.dot{display:inline-block;width:10px;height:10px;border-radius:50%}.tshow i.dot.sq{border-radius:2px}
 .tfest{background:#e8660c;border:2px solid #fff;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .tsugg summary,.tall summary{cursor:pointer}.tpop{min-width:180px;line-height:1.45}.tpop-btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 </style>
@@ -882,7 +883,7 @@ function planTour(fixed={}){
   const cum=[0]; for (let i=0;i<pts.length-1;i++) cum.push(cum[i]+miles(pts[i],pts[i+1])); const Ltot=cum[cum.length-1]||1;
   const home=pts[0], endPt=pts[pts.length-1];
   const cands=[...S.leads.values()].filter(l => kindOf(l)==="venue" && l.lat!=null && (RANK[l.vetVerdict]??9)<=maxRank && l.vetVerdict!=="Closed" && !["Declined","Do not contact"].includes(l.status)
-    && !(T.skip||[]).includes(l.id) && (T.includePlayed || !l.playedBefore))
+    && T.showVenues!==false && !(T.skip||[]).includes(l.id) && (T.includePlayed || !l.playedBefore))
     .map(l => ({l, ...alongRoute(pts,l), near: Math.min(Infinity, ...stopPts.map(p=>miles(p,l)))})).filter(c => c.d<=corr || c.near<=rad); // the strip along the route, plus a circle around every stop
   // "Play here" stops get their own gig; the rest are spread evenly along the whole route
   const plays=(T.stops||[]).map((x,i)=>({x,i})).filter(o=>o.x.play).slice(0,n);
@@ -940,6 +941,9 @@ function viewTour(){
       <label>Miles around each stop<input class="field" id="tr-rad" type="number" min="10" max="200" step="5" value="${esc(T.radius||50)}"></label>
       <label>Miles off the route between stops<input class="field" id="tr-corr" type="number" min="10" max="300" step="5" value="${esc(T.corridor)}"></label>
     </div>
+    <div class="tshow"><span class="small"><b>Look for:</b></span>
+      <label class="small"><input type="checkbox" id="tr-venues" ${T.showVenues===false?"":"checked"} style="width:auto"> <i class="dot" style="background:${RCOL["Good fit"]}"></i>Venues</label>
+      <label class="small"><input type="checkbox" id="tr-fests" ${T.showFests===false?"":"checked"} style="width:auto"> <i class="dot sq" style="background:${FCOL}"></i>Festivals</label></div>
     <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tr-played" ${T.includePlayed?"checked":""} style="width:auto"> Include places we've already played (return dates)</label>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" type="submit">Find venues</button><button class="btn" type="button" id="tr-clear">Clear</button><span class="small muted" id="tr-msg">${esc(T.note||"")}</span>${(T.skip||[]).length?`<span class="small muted">${T.skip.length} skipped · <a href="#" id="tr-unskip">bring them back</a></span>`:""}</div>
   </form>`;
@@ -967,22 +971,22 @@ function viewTour(){
     <div class="tour-out">
       <div class="tour-mapcol">
         <div id="tour-map" class="tour-map" role="application" aria-label="Map of venues in your areas. Click a venue to add it to your tour."></div>
-        <div class="tlegend small"><b>Venues:</b><span><i style="background:${RCOL["Great fit"]}"></i>Great</span><span><i style="background:${RCOL["Good fit"]}"></i>Good</span><span><i style="background:${RCOL["Possible"]}"></i>Possible</span><span><i style="background:${RCOL.other}"></i>Other</span><span><b>Festivals:</b> <i class="sq" style="background:${FCOL}"></i>orange squares (${P.fests.length})</span><label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="tr-fests" ${T.showFests===false?"":"checked"} style="width:auto"> Show festivals</label><span>Dashed circles are your stop areas.</span></div>
+        <div class="tlegend small"><b>Venues:</b><span><i style="background:${RCOL["Great fit"]}"></i>Great</span><span><i style="background:${RCOL["Good fit"]}"></i>Good</span><span><i style="background:${RCOL["Possible"]}"></i>Possible</span><span><i style="background:${RCOL.other}"></i>Other</span><span><b>Festivals:</b> <i class="sq" style="background:${FCOL}"></i>orange squares (${P.fests.length})</span><span>Dashed circles are your stop areas.</span></div>
       </div>
       <div class="tour-side">
         <section class="panel" id="tour-mine">${mineHtml()}</section>
-        <details class="panel tsugg" ${T.showSugg?"open":""} id="tour-sugg"><summary><b>Suggested gigs</b> <span class="small muted">${picks.length} of ${P.slots.length} found · a starting point if you want one</span></summary>
+        ${T.showVenues===false?"":`        <details class="panel tsugg" ${T.showSugg?"open":""} id="tour-sugg"><summary><b>Suggested gigs</b> <span class="small muted">${picks.length} of ${P.slots.length} found · a starting point if you want one</span></summary>
           <p class="small" style="margin-top:10px">${routeText}. About ${Math.round(P.L)} miles straight-line for the route you sketched.</p>
           <ol class="tstops">${rows}</ol>
           <button class="btn" type="button" id="sugg-use">Use these as my tour</button>
-        </details>
+        </details>`}
         ${P.fests.length?`<details class="panel tall"><summary><b>${P.fests.length} festivals in range</b></summary>
           <ol class="tall-list">${[...P.fests].sort((a,b)=>a.s-b.s).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${esc(l.eventDates||"dates unknown")}${l.playedBefore?" · played before":""}</span> ${mineSet.has(l.id)?'<span class="pill">In your tour</span>':`<button type="button" class="linkish small" data-mine-add="${esc(l.id)}">Add to tour</button>`}</li>`}).join("")}</ol>
         </details>`:""}
-        <details class="panel tall"><summary><b>All ${P.cands.length} venues in range</b></summary>
+        ${T.showVenues===false?"":`        <details class="panel tall"><summary><b>All ${P.cands.length} venues in range</b></summary>
           <p class="small muted">Every venue within ${T.radius||50} miles of a stop or ${T.corridor} miles of the route between stops, at your chosen rating, in order along the route.</p>
           <ol class="tall-list">${[...P.cands].sort((a,b)=>a.s-b.s).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> ${ratingPill(l)} <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${Math.round(c.d)} mi off the route${l.playedBefore?" · played here before":""}</span> ${mineSet.has(l.id)?'<span class="pill">In your tour</span>':`<button type="button" class="linkish small" data-mine-add="${esc(l.id)}">Add to tour</button>`}</li>`}).join("")}</ol>
-        </details>
+        </details>`}
       </div>
     </div></div>`;
 }
@@ -1061,13 +1065,14 @@ function readTourForm(){
   const from=$("#tr-from").value.trim(), end=$("#tr-end").value.trim();
   if (from!==T.from) T.fromPt=null; if (end!==(T.end||"")) T.endPt=null; T.from=from; T.end=end;
   T.stops=(T.stops||[]).map((x,i)=>{ const q=($("#tr-stop-"+i)?.value||"").trim(); return {q, pt: q===x.q ? x.pt : null, play: !!$("#tr-play-"+i)?.checked}; });
-  Object.assign(T,{gigs:+$("#tr-gigs").value||5, min:$("#tr-min").value, corridor:+$("#tr-corr").value||75, radius:+$("#tr-rad").value||50, includePlayed:$("#tr-played").checked});
+  Object.assign(T,{gigs:+$("#tr-gigs").value||5, min:$("#tr-min").value, corridor:+$("#tr-corr").value||75, radius:+$("#tr-rad").value||50, includePlayed:$("#tr-played").checked, showVenues:$("#tr-venues").checked, showFests:$("#tr-fests").checked});
 }
 function afterTour(){
   $("#tour-form")?.addEventListener("submit", async e => {
     e.preventDefault(); readTourForm(); const T=S.tour, msg=$("#tr-msg");
     T.stops=(T.stops||[]).filter(x=>x.q); saveTour();
     if (!T.stops.length && !T.end) { msg.textContent="Add at least one stop, or an end town different from the start."; return; }
+    if (T.showVenues===false && T.showFests===false) { msg.textContent="Tick Venues, Festivals, or both."; return; }
     T.note=""; msg.textContent="Finding the cities…";
     const places=[{get:()=>T.fromPt, set:v=>T.fromPt=v, q:T.from, field:"tr-from"},
       ...T.stops.map((x,i)=>({get:()=>x.pt, set:v=>x.pt=v, q:x.q, field:"tr-stop-"+i})),
@@ -1724,7 +1729,7 @@ document.addEventListener("click", e => {
   const mu = t.closest("[data-mine-up]"); if (mu) { mineUp(+mu.dataset.mineUp); return; }
   if (t.closest("#mine-clear")) { S.tour.mine=[]; saveTour(); refreshMine(); render(); return; }
   if (t.closest("#sugg-use")) { S.tour.mine=tourStops().map(s=>s.pick.l.id); saveTour(); refreshMine(); render(); return; }
-  if (t.id==="tr-fests") { S.tour.showFests=t.checked; saveTour(); S.tour.plan=planTour(); render(); return; }
+  if (t.id==="tr-fests"||t.id==="tr-venues") { readTourForm(); saveTour(); if (S.tour.plan) { if (S.tour.showVenues===false && S.tour.showFests===false) { $("#tr-msg").textContent="Tick Venues, Festivals, or both."; return; } S.tour.plan=planTour(); render(); } return; }
   if (t.closest("#tr-addstop")) { readTourForm(); S.tour.stops=[...(S.tour.stops||[]), {q:"", pt:null, play:false}]; saveTour(); render(); setTimeout(()=>$("#tr-stop-"+(S.tour.stops.length-1))?.focus(),0); return; }
   const tdel = t.closest("[data-stop-del]"); if (tdel) { readTourForm(); S.tour.stops.splice(+tdel.dataset.stopDel,1); S.tour.plan=null; saveTour(); render(); return; }
   const tup = t.closest("[data-stop-up]"); if (tup) { readTourForm(); const i=+tup.dataset.stopUp, a=S.tour.stops; [a[i-1],a[i]]=[a[i],a[i-1]]; S.tour.plan=null; saveTour(); render(); return; }
