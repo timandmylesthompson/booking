@@ -883,7 +883,7 @@ function planTour(fixed={}){
   const cum=[0]; for (let i=0;i<pts.length-1;i++) cum.push(cum[i]+miles(pts[i],pts[i+1])); const Ltot=cum[cum.length-1]||1;
   const home=pts[0], endPt=pts[pts.length-1];
   const cands=[...S.leads.values()].filter(l => kindOf(l)==="venue" && l.lat!=null && (RANK[l.vetVerdict]??9)<=maxRank && l.vetVerdict!=="Closed" && !["Declined","Do not contact"].includes(l.status)
-    && T.showVenues!==false && !(T.skip||[]).includes(l.id) && (T.includePlayed || !l.playedBefore))
+    && T.showVenues!==false && l.fitType!=="Nashville residency" && !(T.skip||[]).includes(l.id) && (T.includePlayed || !l.playedBefore))
     .map(l => ({l, ...alongRoute(pts,l), near: Math.min(Infinity, ...stopPts.map(p=>miles(p,l)))})).filter(c => c.d<=corr || c.near<=rad); // the strip along the route, plus a circle around every stop
   // "Play here" stops get their own gig; the rest are spread evenly along the whole route
   const plays=(T.stops||[]).map((x,i)=>({x,i})).filter(o=>o.x.play).slice(0,n);
