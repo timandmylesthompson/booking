@@ -329,6 +329,8 @@ table.states tr:hover td{background:var(--sunken)}
 .tshow{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:4px 0 8px}.tshow label{display:inline-flex;gap:6px;align-items:center}.tshow i.dot{display:inline-block;width:10px;height:10px;border-radius:50%}.tshow i.dot.sq{border-radius:2px}
 .tfest{background:#e8660c;border:2px solid #fff;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .tsugg summary,.tall summary{cursor:pointer}.tpop{min-width:180px;line-height:1.45}.tpop-btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+#city-ac{position:absolute;z-index:3000;display:none;color:var(--ink);background:var(--surface);border:1px solid var(--line,#ccc);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);overflow:hidden}
+.ac-it{padding:8px 10px;cursor:pointer;display:flex;gap:6px;align-items:baseline}.ac-it .small{margin-left:auto}.ac-it.on,.ac-it:hover{background:var(--sunken,#eef2f1)}
 </style>
 
 <header class="top">
@@ -922,7 +924,7 @@ function viewTour(){
   const T=S.tour, P=T.plan, stops=T.stops||[];
   const stopRows = stops.map((x,i)=>`<div class="tstop-row">
       <span class="tletter">${String.fromCharCode(65+i)}</span>
-      <input class="field" id="tr-stop-${i}" value="${esc(x.q||"")}" placeholder="City, ST" aria-label="Stop ${i+1}">
+      <input class="field" id="tr-stop-${i}" value="${esc(x.q||"")}" placeholder="Start typing a city" aria-label="Stop ${i+1}" autocomplete="off" aria-autocomplete="list">
       <label class="small" title="Book one gig somewhere in this area (within the miles-around-each-stop you set), not just drive through"><input type="checkbox" id="tr-play-${i}" ${x.play?"checked":""} style="width:auto"> Gig in this area</label>
       ${i>0?`<button type="button" class="btn sm" data-stop-up="${i}" title="Move up" aria-label="Move stop up">↑</button>`:""}
       <button type="button" class="btn sm" data-stop-del="${i}" title="Remove this stop" aria-label="Remove stop">✕</button>
@@ -930,10 +932,10 @@ function viewTour(){
   const form = `<form id="tour-form" class="panel tour-form">
     <h2>Plan a tour <small>sketch the areas you want to pass through, then click venues on the map to build your tour</small></h2>
     <div class="troute">
-      <label>Start<input class="field" id="tr-from" value="${esc(T.from)}" placeholder="City, ST"></label>
+      <label>Start<input class="field" id="tr-from" value="${esc(T.from)}" placeholder="Start typing a city" autocomplete="off" aria-autocomplete="list"></label>
       <div class="tstops-edit"><div class="small muted" style="margin-bottom:4px">Areas to pass through, in order. Each town is just the middle of an area; venues all around it count.</div>${stopRows||`<p class="small muted" style="margin:0 0 6px">No stops yet. Add the towns you want the route to pass through.</p>`}
         <button type="button" class="btn sm" id="tr-addstop">+ Add a stop</button></div>
-      <label>End<input class="field" id="tr-end" value="${esc(T.end||"")}" placeholder="Back to the start"></label>
+      <label>End<input class="field" id="tr-end" value="${esc(T.end||"")}" placeholder="Back to the start (or type a city)" autocomplete="off" aria-autocomplete="list"></label>
     </div>
     <div class="tgrid">
       <label>Gigs<input class="field" id="tr-gigs" type="number" min="1" max="20" value="${esc(T.gigs)}"></label>
@@ -1088,6 +1090,47 @@ function afterTour(){
   });
   drawTourMap();
 }
+
+
+/* ---------- City autocomplete for the tour planner (start, stops, end) ---------- */
+const BIG_CITIES=new Set("new york|NY,los angeles|CA,chicago|IL,houston|TX,phoenix|AZ,philadelphia|PA,san antonio|TX,san diego|CA,dallas|TX,austin|TX,jacksonville|FL,fort worth|TX,columbus|OH,charlotte|NC,indianapolis|IN,san francisco|CA,seattle|WA,denver|CO,oklahoma city|OK,nashville|TN,washington|DC,el paso|TX,las vegas|NV,boston|MA,detroit|MI,portland|OR,louisville|KY,memphis|TN,baltimore|MD,milwaukee|WI,albuquerque|NM,tucson|AZ,fresno|CA,sacramento|CA,mesa|AZ,atlanta|GA,kansas city|MO,colorado springs|CO,omaha|NE,raleigh|NC,miami|FL,virginia beach|VA,long beach|CA,oakland|CA,minneapolis|MN,tulsa|OK,tampa|FL,arlington|TX,wichita|KS,new orleans|LA,cleveland|OH,honolulu|HI,anaheim|CA,lexington|KY,henderson|NV,orlando|FL,irvine|CA,newark|NJ,st louis|MO,pittsburgh|PA,cincinnati|OH,greensboro|NC,st paul|MN,lincoln|NE,toledo|OH,durham|NC,buffalo|NY,madison|WI,lubbock|TX,fort wayne|IN,st petersburg|FL,richmond|VA,birmingham|AL,baton rouge|LA,des moines|IA,spokane|WA,boise|ID,chattanooga|TN,knoxville|TN,little rock|AR,huntsville|AL,montgomery|AL,mobile|AL,jackson|MS,shreveport|LA,asheville|NC,charleston|SC,charleston|WV,columbia|SC,greenville|SC,savannah|GA,augusta|GA,macon|GA,athens|GA,evansville|IN,bowling green|KY,clarksville|TN,murfreesboro|TN,franklin|TN,johnson city|TN,springfield|MO,springfield|IL,peoria|IL,rockford|IL,dayton|OH,akron|OH,ann arbor|MI,grand rapids|MI,lansing|MI,roanoke|VA,charlottesville|VA,norfolk|VA,wilmington|NC,winston salem|NC,fayetteville|AR,tallahassee|FL,gainesville|FL,pensacola|FL,sarasota|FL,fort myers|FL,salt lake city|UT,santa fe|NM,cedar rapids|IA,iowa city|IA,sioux falls|SD,fargo|ND,duluth|MN,green bay|WI,bloomington|IN,lafayette|LA,lafayette|IN,paducah|KY,owensboro|KY,tupelo|MS,oxford|MS,hattiesburg|MS,biloxi|MS,muscle shoals|AL,florence|AL,tuscaloosa|AL,auburn|AL,harrisburg|PA,lancaster|PA,providence|RI,hartford|CT,new haven|CT,albany|NY,rochester|NY,syracuse|NY,burlington|VT,portland|ME,manchester|NH".split(","));
+let AC_LC=null; function acLeadCities(){ if (AC_LC && AC_LC.n===S.leads.size) return AC_LC.m; const m={}; for (const l of S.leads.values()){ if (!l.city||!l.stateCode) continue; const k=normCity(String(l.city).replace(/\s*\(.*\)/,""))+"|"+l.stateCode; m[k]=(m[k]||0)+1; } AC_LC={n:S.leads.size,m}; return m; }
+const AC={el:null,input:null,items:[],idx:-1,seq:0};
+const isCityInput = t => t && t.matches && t.matches("#tr-from, #tr-end, [id^='tr-stop-']");
+function acBox(){ if (!AC.el){ AC.el=document.createElement("div"); AC.el.id="city-ac"; AC.el.setAttribute("role","listbox"); document.body.appendChild(AC.el);
+  AC.el.addEventListener("mousedown", e=>{ const it=e.target.closest("[data-ac]"); if (it){ e.preventDefault(); acPick(+it.dataset.ac); } }); } return AC.el; }
+function acHide(){ if (AC.el) AC.el.style.display="none"; AC.items=[]; AC.idx=-1; if (AC.input) AC.input.setAttribute("aria-expanded","false"); }
+async function acSearch(input){
+  const seq=++AC.seq, raw=input.value; const {city, code}=parsePlace(raw); const q=normCity(city);
+  if (q.length<2){ acHide(); return; }
+  const list=await loadCities(); if (seq!==AC.seq) return;
+  const home=S.tour.fromPt||{lat:36.1627,lng:-86.7816};
+  const hits=[]; for (const c of list){ if (code && c[1]!==code) continue; const n=normCity(c[0]); if (n.startsWith(q)) hits.push({c, starts:2}); else if (q.length>=3 && n.includes(" "+q)) hits.push({c, starts:1}); }
+  const leadCount = acLeadCities();
+  hits.forEach(h=>{ h.d=miles(home,{lat:h.c[2],lng:h.c[3]}); const k=normCity(h.c[0])+"|"+h.c[1];
+    h.score = h.starts*1000 + (BIG_CITIES.has(k)?400:0) + Math.min(leadCount[k]||0,6)*60 - h.d/8; });
+  hits.sort((a,b)=>b.score-a.score);
+  AC.items=hits.slice(0,8).map(h=>h.c); AC.idx=AC.items.length?0:-1; AC.input=input;
+  const box=acBox(); if (!AC.items.length){ acHide(); return; }
+  box.innerHTML=AC.items.map((c,i)=>`<div class="ac-it${i===AC.idx?" on":""}" data-ac="${i}" role="option"><span><b>${esc(c[0])}</b>, ${esc(STATE_NAMES[c[1]]||c[1])}</span> <span class="muted small">${Math.round(miles(home,{lat:c[2],lng:c[3]}))} mi</span></div>`).join("");
+  const r=input.getBoundingClientRect(); Object.assign(box.style,{display:"block", left:(r.left+window.scrollX)+"px", top:(r.bottom+window.scrollY+2)+"px", width:Math.min(Math.max(r.width,260),460)+"px"});
+  input.setAttribute("aria-expanded","true");
+}
+function acPick(i){
+  const c=AC.items[i], input=AC.input; if (!c||!input) return;
+  const label=`${c[0]}, ${c[1]}`; input.value=label;
+  try { localStorage.setItem("tm-geo3:"+label.toLowerCase(), JSON.stringify({lat:c[2], lng:c[3], label:`${c[0]}, ${STATE_NAMES[c[1]]}`})); } catch {}
+  acHide(); input.dispatchEvent(new Event("change",{bubbles:true}));
+}
+document.addEventListener("input", e=>{ if (isCityInput(e.target)) acSearch(e.target); });
+document.addEventListener("keydown", e=>{
+  if (!isCityInput(e.target) || !AC.items.length || AC.el?.style.display==="none") return;
+  if (e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); AC.idx=(AC.idx+(e.key==="ArrowDown"?1:-1)+AC.items.length)%AC.items.length; AC.el.querySelectorAll(".ac-it").forEach((n,i)=>n.classList.toggle("on",i===AC.idx)); }
+  else if (e.key==="Enter"||e.key==="Tab"){ if (AC.idx>=0){ e.preventDefault(); acPick(AC.idx); } }
+  else if (e.key==="Escape"){ acHide(); }
+}, true);
+document.addEventListener("focusout", e=>{ if (isCityInput(e.target)) setTimeout(acHide,120); });
+window.addEventListener("resize", acHide);
 
 /* ---------- Fans ---------- */
 const JOIN_URL = "https://timandmylesthompson.github.io/booking/join.html";
