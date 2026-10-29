@@ -329,7 +329,8 @@ table.states tr:hover td{background:var(--sunken)}
 .tshow{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:4px 0 8px}.tshow label{display:inline-flex;gap:6px;align-items:center}.tshow i.dot{display:inline-block;width:10px;height:10px;border-radius:50%}.tshow i.dot.sq{border-radius:2px}
 .tfest{background:#e8660c;border:2px solid #fff;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .tsugg summary,.tall summary{cursor:pointer}.tpop{min-width:180px;line-height:1.45}.tpop-btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
-#city-ac{position:absolute;z-index:3000;display:none;color:var(--ink);background:var(--surface);border:1px solid var(--line,#ccc);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);overflow:hidden}
+#city-ac{position:absolute;z-index:3000;display:none;max-height:340px;overflow-y:auto;color:var(--ink);background:var(--surface);border:1px solid var(--line,#ccc);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.ac-head{padding:6px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
 .ac-it{padding:8px 10px;cursor:pointer;display:flex;gap:6px;align-items:baseline}.ac-it .small{margin-left:auto}.ac-it.on,.ac-it:hover{background:var(--sunken,#eef2f1)}
 </style>
 
@@ -1094,17 +1095,30 @@ function afterTour(){
 
 /* ---------- City autocomplete for the tour planner (start, stops, end) ---------- */
 const BIG_CITIES=new Set("new york|NY,los angeles|CA,chicago|IL,houston|TX,phoenix|AZ,philadelphia|PA,san antonio|TX,san diego|CA,dallas|TX,austin|TX,jacksonville|FL,fort worth|TX,columbus|OH,charlotte|NC,indianapolis|IN,san francisco|CA,seattle|WA,denver|CO,oklahoma city|OK,nashville|TN,washington|DC,el paso|TX,las vegas|NV,boston|MA,detroit|MI,portland|OR,louisville|KY,memphis|TN,baltimore|MD,milwaukee|WI,albuquerque|NM,tucson|AZ,fresno|CA,sacramento|CA,mesa|AZ,atlanta|GA,kansas city|MO,colorado springs|CO,omaha|NE,raleigh|NC,miami|FL,virginia beach|VA,long beach|CA,oakland|CA,minneapolis|MN,tulsa|OK,tampa|FL,arlington|TX,wichita|KS,new orleans|LA,cleveland|OH,honolulu|HI,anaheim|CA,lexington|KY,henderson|NV,orlando|FL,irvine|CA,newark|NJ,st louis|MO,pittsburgh|PA,cincinnati|OH,greensboro|NC,st paul|MN,lincoln|NE,toledo|OH,durham|NC,buffalo|NY,madison|WI,lubbock|TX,fort wayne|IN,st petersburg|FL,richmond|VA,birmingham|AL,baton rouge|LA,des moines|IA,spokane|WA,boise|ID,chattanooga|TN,knoxville|TN,little rock|AR,huntsville|AL,montgomery|AL,mobile|AL,jackson|MS,shreveport|LA,asheville|NC,charleston|SC,charleston|WV,columbia|SC,greenville|SC,savannah|GA,augusta|GA,macon|GA,athens|GA,evansville|IN,bowling green|KY,clarksville|TN,murfreesboro|TN,franklin|TN,johnson city|TN,springfield|MO,springfield|IL,peoria|IL,rockford|IL,dayton|OH,akron|OH,ann arbor|MI,grand rapids|MI,lansing|MI,roanoke|VA,charlottesville|VA,norfolk|VA,wilmington|NC,winston salem|NC,fayetteville|AR,tallahassee|FL,gainesville|FL,pensacola|FL,sarasota|FL,fort myers|FL,salt lake city|UT,santa fe|NM,cedar rapids|IA,iowa city|IA,sioux falls|SD,fargo|ND,duluth|MN,green bay|WI,bloomington|IN,lafayette|LA,lafayette|IN,paducah|KY,owensboro|KY,tupelo|MS,oxford|MS,hattiesburg|MS,biloxi|MS,muscle shoals|AL,florence|AL,tuscaloosa|AL,auburn|AL,harrisburg|PA,lancaster|PA,providence|RI,hartford|CT,new haven|CT,albany|NY,rochester|NY,syracuse|NY,burlington|VT,portland|ME,manchester|NH".split(","));
+let AC_TOWNS=null; function acTowns(){ // towns that have venues/festivals, with counts
+  if (AC_TOWNS && AC_TOWNS.n===S.leads.size) return AC_TOWNS.list; const m={};
+  for (const l of S.leads.values()){ if (!l.city||!l.stateCode||l.lat==null||l.fitType==="Nashville residency"||l.vetVerdict==="Closed") continue;
+    const name=String(l.city).replace(/\s*\(.*\)/,"").split(/\s*[\/]\s*/)[0].trim(); if (!name || name.length>40) continue;
+    const k=normCity(name)+"|"+l.stateCode; const t=m[k]||(m[k]={name, st:l.stateCode, lat:l.lat, lng:l.lng, v:0, f:0}); kindOf(l)==="festival"?t.f++:t.v++; }
+  AC_TOWNS={n:S.leads.size, list:Object.values(m)}; return AC_TOWNS.list; }
 let AC_LC=null; function acLeadCities(){ if (AC_LC && AC_LC.n===S.leads.size) return AC_LC.m; const m={}; for (const l of S.leads.values()){ if (!l.city||!l.stateCode) continue; const k=normCity(String(l.city).replace(/\s*\(.*\)/,""))+"|"+l.stateCode; m[k]=(m[k]||0)+1; } AC_LC={n:S.leads.size,m}; return m; }
 const AC={el:null,input:null,items:[],idx:-1,seq:0};
 const isCityInput = t => t && t.matches && t.matches("#tr-from, #tr-end, [id^='tr-stop-']");
 function acBox(){ if (!AC.el){ AC.el=document.createElement("div"); AC.el.id="city-ac"; AC.el.setAttribute("role","listbox"); document.body.appendChild(AC.el);
-  AC.el.addEventListener("mousedown", e=>{ const it=e.target.closest("[data-ac]"); if (it){ e.preventDefault(); acPick(+it.dataset.ac); } }); } return AC.el; }
+  AC.el.addEventListener("mousedown", e=>{ e.preventDefault(); const it=e.target.closest("[data-ac]"); if (it) acPick(+it.dataset.ac); }); } return AC.el; }
 function acHide(){ if (AC.el) AC.el.style.display="none"; AC.items=[]; AC.idx=-1; if (AC.input) AC.input.setAttribute("aria-expanded","false"); }
-async function acSearch(input){
-  const seq=++AC.seq, raw=input.value; const {city, code}=parsePlace(raw); const q=normCity(city);
-  if (q.length<2){ acHide(); return; }
-  const list=await loadCities(); if (seq!==AC.seq) return;
+async function acSearch(input, browse=false){
+  const seq=++AC.seq, raw=browse?"":input.value; const {city, code}=parsePlace(raw); const q=normCity(city);
   const home=S.tour.fromPt||{lat:36.1627,lng:-86.7816};
+  if (q.length<2){ // browse: every town with venues on your list, nearest first
+    let towns=acTowns().filter(t=>(!code||t.st===code) && (!q||normCity(t.name).startsWith(q)));
+    towns=towns.map(t=>({...t,d:miles(home,t)})).sort((a,b)=>a.d-b.d);
+    AC.items=towns.map(t=>[t.name,t.st,t.lat,t.lng]); AC.idx=-1; AC.input=input;
+    const box=acBox(); if (!AC.items.length){ acHide(); return; }
+    box.innerHTML=`<div class="ac-head small muted">${towns.length} towns with venues on your list, nearest first. Keep typing to search every US city.</div>`+
+      towns.map((t,i)=>`<div class="ac-it" data-ac="${i}" role="option"><span><b>${esc(t.name)}</b>, ${esc(STATE_NAMES[t.st]||t.st)}</span> <span class="muted small">${t.v?`${t.v} venue${t.v>1?"s":""}`:""}${t.v&&t.f?" · ":""}${t.f?`${t.f} fest${t.f>1?"s":""}`:""} · ${Math.round(t.d)} mi</span></div>`).join("");
+    acPlace(input); return; }
+  const list=await loadCities(); if (seq!==AC.seq) return;
   const hits=[]; for (const c of list){ if (code && c[1]!==code) continue; const n=normCity(c[0]); if (n.startsWith(q)) hits.push({c, starts:2}); else if (q.length>=3 && n.includes(" "+q)) hits.push({c, starts:1}); }
   const leadCount = acLeadCities();
   hits.forEach(h=>{ h.d=miles(home,{lat:h.c[2],lng:h.c[3]}); const k=normCity(h.c[0])+"|"+h.c[1];
@@ -1113,9 +1127,11 @@ async function acSearch(input){
   AC.items=hits.slice(0,8).map(h=>h.c); AC.idx=AC.items.length?0:-1; AC.input=input;
   const box=acBox(); if (!AC.items.length){ acHide(); return; }
   box.innerHTML=AC.items.map((c,i)=>`<div class="ac-it${i===AC.idx?" on":""}" data-ac="${i}" role="option"><span><b>${esc(c[0])}</b>, ${esc(STATE_NAMES[c[1]]||c[1])}</span> <span class="muted small">${Math.round(miles(home,{lat:c[2],lng:c[3]}))} mi</span></div>`).join("");
-  const r=input.getBoundingClientRect(); Object.assign(box.style,{display:"block", left:(r.left+window.scrollX)+"px", top:(r.bottom+window.scrollY+2)+"px", width:Math.min(Math.max(r.width,260),460)+"px"});
-  input.setAttribute("aria-expanded","true");
+  acPlace(input);
 }
+function acPlace(input){ const box=acBox(), r=input.getBoundingClientRect(); box.scrollTop=0;
+  Object.assign(box.style,{display:"block", left:(r.left+window.scrollX)+"px", top:(r.bottom+window.scrollY+2)+"px", width:Math.min(Math.max(r.width,280),480)+"px"});
+  input.setAttribute("aria-expanded","true"); }
 function acPick(i){
   const c=AC.items[i], input=AC.input; if (!c||!input) return;
   const label=`${c[0]}, ${c[1]}`; input.value=label;
@@ -1123,9 +1139,11 @@ function acPick(i){
   acHide(); input.dispatchEvent(new Event("change",{bubbles:true}));
 }
 document.addEventListener("input", e=>{ if (isCityInput(e.target)) acSearch(e.target); });
+document.addEventListener("focusin", e=>{ if (isCityInput(e.target)) acSearch(e.target, true); });
+document.addEventListener("mousedown", e=>{ if (isCityInput(e.target) && document.activeElement===e.target && (!AC.el||AC.el.style.display==="none")) acSearch(e.target, true); });
 document.addEventListener("keydown", e=>{
   if (!isCityInput(e.target) || !AC.items.length || AC.el?.style.display==="none") return;
-  if (e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); AC.idx=(AC.idx+(e.key==="ArrowDown"?1:-1)+AC.items.length)%AC.items.length; AC.el.querySelectorAll(".ac-it").forEach((n,i)=>n.classList.toggle("on",i===AC.idx)); }
+  if (e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); AC.idx=(AC.idx+(e.key==="ArrowDown"?1:-1)+AC.items.length)%AC.items.length; AC.el.querySelectorAll(".ac-it").forEach((n,i)=>{ n.classList.toggle("on",i===AC.idx); if (i===AC.idx) n.scrollIntoView({block:"nearest"}); }); }
   else if (e.key==="Enter"||e.key==="Tab"){ if (AC.idx>=0){ e.preventDefault(); acPick(AC.idx); } }
   else if (e.key==="Escape"){ acHide(); }
 }, true);
