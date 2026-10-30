@@ -341,6 +341,7 @@ table.states tr:hover td{background:var(--sunken)}
 .mic-btn:hover{color:var(--accent);border-color:var(--accent)}
 .mic-btn.on{background:#b3261e;border-color:#b3261e;color:#fff;animation:micpulse 1.2s ease-in-out infinite}
 @keyframes micpulse{0%,100%{box-shadow:0 0 0 0 rgba(179,38,30,.45)}50%{box-shadow:0 0 0 8px rgba(179,38,30,0)}}
+.filters.searching select,.filters.searching label{opacity:.45}
 </style>
 
 <header class="top">
@@ -647,8 +648,17 @@ function viewToday(){
 }
 
 /* ---------- Leads ---------- */
+// Searching looks through every lead and ignores the filters, so you can always find a place by name.
+const srchNorm = x => String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/['’‘`]/g,"").replace(/[^a-z0-9@. ]/g," ");
+function leadHay(l){ return srchNorm([l.name,l.city,l.state,STATE_NAMES[l.stateCode],l.stateCode,l.contactName,l.contactText,(l.emails||[]).join(" "),(l.phones||[]).join(" "),l.website,l.fitText,l.agentNote,l.myNotes,l.locationText,l.fitType,l.origin,l.isNew?"new":""].join(" ")); }
 function filtered(){
-  const f = S.f, q = f.q.trim().toLowerCase();
+  const f = S.f, words = srchNorm(f.q).split(" ").filter(Boolean);
+  const sort = (a,b)=> String(a.stateCode).localeCompare(String(b.stateCode)) || String(a.city).localeCompare(String(b.city)) || String(a.name).localeCompare(String(b.name));
+  if (words.length) { // search mode: every word must appear somewhere; filters paused
+    const nameFirst = l => words.every(w => srchNorm(l.name).includes(w)) ? 0 : 1;
+    return [...S.leads.values()].filter(l => { const h=leadHay(l); return words.every(w=>h.includes(w)); })
+      .sort((a,b)=> nameFirst(a)-nameFirst(b) || sort(a,b));
+  }
   return [...S.leads.values()].filter(l =>
     (f.kind==="all" || kindOf(l)===f.kind) &&
     (!f.state || l.stateCode===f.state) &&
@@ -656,9 +666,8 @@ function filtered(){
     (!f.rating || myRating(l)===f.rating) &&
     (!f.prio || (l.priority||"Normal")===f.prio) &&
     (!f.cat || (l.fitType||"")===f.cat) &&
-    (!f.email || (l.emails && l.emails.length)) &&
-    (!q || [l.name,l.city,l.state,l.contactName,(l.emails||[]).join(" "),l.fitText,l.origin,l.isNew?"new":""].join(" ").toLowerCase().includes(q))
-  ).sort((a,b)=> String(a.stateCode).localeCompare(String(b.stateCode)) || String(a.city).localeCompare(String(b.city)) || String(a.name).localeCompare(String(b.name)));
+    (!f.email || (l.emails && l.emails.length))
+  ).sort(sort);
 }
 function viewLeads(){
   const all = [...S.leads.values()];
@@ -667,7 +676,7 @@ function viewLeads(){
   const list = filtered();
   let rows = "", lastState = null;
   for (const l of list) {
-    if (l.stateCode !== lastState) { lastState = l.stateCode; rows += `<div class="stategroup">${esc(STATE_NAMES[l.stateCode]||l.stateCode||"No state")}</div>`; }
+    if (!S.f.q.trim() && l.stateCode !== lastState) { lastState = l.stateCode; rows += `<div class="stategroup">${esc(STATE_NAMES[l.stateCode]||l.stateCode||"No state")}</div>`; }
     const st = l.status||"Not contacted";
     rows += `<div class="row k-${kindOf(l)}" role="option" tabindex="0" data-open="${esc(l.id)}" aria-selected="${l.id===S.selected}"><span class="bar"></span>
       <div style="min-width:0"><div class="nm">${esc(l.name)}</div><div class="sub">${(()=>{const d=dateLabel(l);return d?d.html+" ":""})()}${esc(l.city||"")}${l.seats? ` · <span class="mono">${l.seats}</span> seats`:""}${!(l.emails||[]).length? " · no email":""}</div></div>
@@ -677,7 +686,7 @@ function viewLeads(){
   return `<div class="leads">
     <div class="listcol">
       <div class="kindtabs">${kt("all","All")}${kt("venue","Venues")}${kt("festival","Festivals")}${kt("private","Private")}</div>
-      <div class="filters">
+      <div class="filters${S.f.q.trim()?" searching":""}">
         <input type="search" id="f-q" placeholder="Search name, city, contact, notes" value="${esc(S.f.q)}" aria-label="Search leads">
         <select id="f-state" aria-label="State"><option value="">All states</option>${states.map(s=>`<option value="${s}" ${S.f.state===s?"selected":""}>${esc(STATE_NAMES[s]||s)}</option>`).join("")}</select>
         <select id="f-status" aria-label="Status"><option value="">Any status</option>${STATUSES.map(s=>`<option ${S.f.status===s?"selected":""}>${s}</option>`).join("")}</select>
@@ -687,8 +696,8 @@ function viewLeads(){
         <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="f-email" ${S.f.email?"checked":""} style="width:auto"> Has email</label>
       </div>
       <button class="btn" type="button" id="btn-new2" style="align-self:flex-start">+ Add ${S.f.kind==="festival"?"festival":S.f.kind==="private"?"private client":"venue"}</button>
-      <div class="count">${list.length} of ${all.length} leads${S.f.kind!=="all"||S.f.state||S.f.status||S.f.rating||S.f.prio||S.f.cat||S.f.q||S.f.email?` · <a href="#" id="f-clear">Clear filters</a>`:""}</div>
-      <div class="list" role="listbox" aria-label="Leads">${rows || `<div class="empty small">${all.length? "No leads match these filters." : "No leads yet. Use + New lead, or ask Claude to import a research file."}</div>`}</div>
+      <div class="count">${S.f.q.trim()?`${list.length} found in all ${all.length} leads · filters are paused while you search · <a href="#" id="f-clearq">Clear search</a>`:`${list.length} of ${all.length} leads`}${S.f.q.trim()?"":S.f.kind!=="all"||S.f.state||S.f.status||S.f.rating||S.f.prio||S.f.cat||S.f.q||S.f.email?` · <a href="#" id="f-clear">Clear filters</a>`:""}</div>
+      <div class="list" role="listbox" aria-label="Leads">${rows || `<div class="empty small">${all.length? (S.f.q.trim()? "Nothing in your leads matches that search." : "No leads match these filters.") : "No leads yet. Use + New lead, or ask Claude to import a research file."}</div>`}</div>
     </div>
     <section class="detail" id="detail"></section>
   </div>`;
@@ -1922,6 +1931,7 @@ document.addEventListener("click", e => {
     case "btn-back": goBack(); break;
     case "save-all": saveAll(); break;
     case "discard": S.draft = null; render(); toast("Changes discarded"); break;
+    case "f-clearq": e.preventDefault(); S.f.q=""; saveFilters(); render(); break;
     case "f-clear": e.preventDefault(); S.f = {kind:"all", q:"", state:"", status:"", rating:"", prio:"", cat:"", email:false}; saveFilters(); render(); break;
     case "act-email": if (l) openEmail(l); break;
     case "act-note": $("#note-body")?.focus(); break;
