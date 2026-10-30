@@ -334,6 +334,8 @@ table.states tr:hover td{background:var(--sunken)}
 .ac-it{padding:8px 10px;cursor:pointer;display:flex;gap:6px;align-items:baseline}.ac-it .small{margin-left:auto}.ac-it.on,.ac-it:hover{background:var(--sunken,#eef2f1)}
 .mic-wrap{position:relative;display:block}.mic-wrap textarea{padding-right:46px}
 .mic-btn{position:absolute;right:8px;bottom:8px;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.mic-meter{position:absolute;right:50px;bottom:40px;display:flex;gap:2px;align-items:flex-end;height:24px;pointer-events:none}.mic-meter i{display:block;width:3px;height:3px;background:#b3261e;border-radius:2px;transition:height .06s}
+.mic-note{position:absolute;top:6px;right:50px;max-width:75%;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:3px 8px;color:var(--ink);z-index:2}
 .mic-btn.busy{color:var(--accent);border-color:var(--accent);animation:micspin 1s linear infinite}@keyframes micspin{to{transform:rotate(360deg)}}
 .mic-tag{position:absolute;right:50px;bottom:14px;background:var(--surface);color:var(--muted);padding:2px 6px;border-radius:6px;border:1px solid var(--line);pointer-events:none}
 .mic-btn:hover{color:var(--accent);border-color:var(--accent)}
@@ -1193,19 +1195,34 @@ async function to16k(blob){
   const off=new OfflineAudioContext(1, Math.ceil(dec.duration*16000), 16000); const src=off.createBufferSource(); src.buffer=dec; src.connect(off.destination); src.start();
   return (await off.startRendering()).getChannelData(0);
 }
+function micNote(btn, text){ const w=btn.parentElement; let n=w.querySelector(".mic-note"); if(!n){ n=document.createElement("span"); n.className="mic-note small"; w.appendChild(n); } n.textContent=text; clearTimeout(n._t); n._t=setTimeout(()=>n.remove(), 7000); }
+// live input-level bars while recording, so you can see the mic is hearing you
+function micMeter(btn, stream){
+  const w=btn.parentElement; let m=w.querySelector(".mic-meter"); if(!m){ m=document.createElement("span"); m.className="mic-meter"; m.innerHTML="<i></i>".repeat(12); w.appendChild(m); }
+  const bars=[...m.children], ac=new (window.AudioContext||window.webkitAudioContext)(), an=ac.createAnalyser(); an.fftSize=512; ac.createMediaStreamSource(stream).connect(an);
+  const data=new Uint8Array(an.fftSize); let peak=0, run=true, t0=Date.now(), quietWarned=false; const hist=Array(12).fill(0);
+  (function tick(){ if(!run) return; an.getByteTimeDomainData(data); let sum=0; for (const v of data){ const x=(v-128)/128; sum+=x*x; } const rms=Math.sqrt(sum/data.length);
+    peak=Math.max(peak,rms); hist.shift(); hist.push(Math.min(1,Math.sqrt(rms)*2.2)); bars.forEach((b,i)=>b.style.height=(3+hist[i]*20)+"px");
+    if (!quietWarned && Date.now()-t0>3000 && peak<0.01){ quietWarned=true; micNote(btn,"I'm not hearing anything yet. Is the right microphone selected?"); }
+    requestAnimationFrame(tick); })();
+  return { stop(){ run=false; m.remove(); try{ ac.close(); }catch{} return peak>=0.01; } };
+}
 async function whisperStart(btn, ta){
   if (WH.mr){ const same=MIC.btn===btn; WH.mr.stop(); if (same) return; }
   let stream; try { stream=await navigator.mediaDevices.getUserMedia({audio:true}); } catch { toast("The microphone is blocked. Click the lock icon by the address bar and allow the microphone for this site."); return; }
   whisperPipe(btn).catch(()=>{}); // start the one-time download while you talk
   const mr=new MediaRecorder(stream); WH.mr=mr; WH.chunks=[]; MIC.btn=btn; MIC.ta=ta;
+  const meter=micMeter(btn, stream);
   mr.ondataavailable=e=>{ if (e.data.size) WH.chunks.push(e.data); };
-  mr.onstop=async()=>{ stream.getTracks().forEach(t=>t.stop()); WH.mr=null;
+  mr.onstop=async()=>{ const heard=meter.stop(); stream.getTracks().forEach(t=>t.stop()); WH.mr=null;
+    if (!heard){ micStatus(btn,"idle",""); micNote(btn,"No sound reached the app. Check which microphone Brave is using (lock icon by the address bar, or Settings → Privacy → Site settings → Microphone)."); MIC.btn=null; MIC.ta=null; return; }
     const blob=new Blob(WH.chunks,{type:mr.mimeType||"audio/webm"});
     try { micStatus(btn,"busy","Turning your words into text…"); const pipe=await whisperPipe(btn); micStatus(btn,"busy","Turning your words into text…");
       const audio=await to16k(blob); const out=await pipe(audio,{chunk_length_s:30, stride_length_s:5});
-      const text=(out&&out.text||"").replace(/\[[^\]]*\]|\([^)]*\)/g,"").replace(/\s+/g," ").trim(); // drop sound tags like [BLANK_AUDIO] or (chiming) if (text) micInsert(ta,text); else toast("I didn't catch any words. Try again a little closer to the mic.");
-    } catch(e){ console.error(e); toast("Voice typing couldn't start. Check your internet connection for the one-time download, then try again."); }
-    micStatus(btn,"idle",""); btn.title="Talk instead of typing"; MIC.btn=null; MIC.ta=null; };
+      const text=(out&&out.text||"").replace(/\[[^\]]*\]|\([^)]*\)/g,"").replace(/\s+/g," ").trim(); // drop sound tags like [BLANK_AUDIO] or (chiming) window.__micLast={chars:text.length, raw:(out&&out.text||"").slice(0,80), secs:Math.round(audio.length/16000)};
+      micStatus(btn,"idle",""); if (text){ micInsert(ta,text); micNote(btn,"Added. Press Save changes to keep it."); } else micNote(btn,"I heard sound but couldn't make out words. Try again, a little closer to the mic.");
+    } catch(e){ console.error(e); window.__micErr=String(e); micStatus(btn,"idle",""); micNote(btn,"Voice typing hit a problem: "+String(e.message||e).slice(0,90)); }
+    btn.title="Talk instead of typing"; MIC.btn=null; MIC.ta=null; };
   mr.start(); micStatus(btn,"rec","Listening… tap the mic again when you're done");
 }
 function micStart(btn){
