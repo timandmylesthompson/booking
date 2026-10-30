@@ -332,6 +332,11 @@ table.states tr:hover td{background:var(--sunken)}
 #city-ac{position:absolute;z-index:3000;display:none;max-height:340px;overflow-y:auto;color:var(--ink);background:var(--surface);border:1px solid var(--line,#ccc);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
 .ac-head{padding:6px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
 .ac-it{padding:8px 10px;cursor:pointer;display:flex;gap:6px;align-items:baseline}.ac-it .small{margin-left:auto}.ac-it.on,.ac-it:hover{background:var(--sunken,#eef2f1)}
+.mic-wrap{position:relative;display:block}.mic-wrap textarea{padding-right:46px}
+.mic-btn{position:absolute;right:8px;bottom:8px;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.mic-btn:hover{color:var(--accent);border-color:var(--accent)}
+.mic-btn.on{background:#b3261e;border-color:#b3261e;color:#fff;animation:micpulse 1.2s ease-in-out infinite}
+@keyframes micpulse{0%,100%{box-shadow:0 0 0 0 rgba(179,38,30,.45)}50%{box-shadow:0 0 0 8px rgba(179,38,30,0)}}
 </style>
 
 <header class="top">
@@ -738,7 +743,7 @@ function renderDetail(){
     <div class="d-sec full">
       <h3>Notes and history <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">Calls, emails, replies and notes, newest first</span></h3>
       <form class="composer" id="note-form">
-        <textarea class="field" id="note-body" placeholder="What happened? On your phone, tap the keyboard's microphone to dictate.">${esc(d.noteBody)}</textarea>
+        <textarea class="field" id="note-body" placeholder="What happened? Type, or tap the microphone and talk.">${esc(d.noteBody)}</textarea>
         <div class="crow">
           <select class="field" id="note-kind" style="width:auto">${Object.entries(LOG_KINDS).map(([v,t])=>`<option value="${v}" ${d.noteKind===v?"selected":""}>${t}</option>`).join("")}</select>
           <button class="btn primary" type="submit">Save changes</button>
@@ -1149,6 +1154,47 @@ document.addEventListener("keydown", e=>{
 }, true);
 document.addEventListener("focusout", e=>{ if (isCityInput(e.target)) setTimeout(acHide,120); });
 window.addEventListener("resize", acHide);
+
+
+/* ---------- Voice typing: a microphone button on every notes / message box ---------- */
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const MIC_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
+const MIC={rec:null, ta:null, btn:null};
+function micStop(){ try { MIC.rec && MIC.rec.stop(); } catch {} }
+function micReset(){ if (MIC.btn){ MIC.btn.classList.remove("on"); MIC.btn.setAttribute("aria-pressed","false"); MIC.btn.title="Talk instead of typing"; } MIC.rec=null; MIC.ta=null; MIC.btn=null; }
+function micInsert(ta, text){
+  const start=ta.selectionStart ?? ta.value.length, end=ta.selectionEnd ?? start, before=ta.value.slice(0,start), after=ta.value.slice(end);
+  const pad = before && !/\s$/.test(before) ? " " : "";
+  let t = text.trim(); if (!before.trim() || /[.!?]\s*$/.test(before)) t = t.charAt(0).toUpperCase()+t.slice(1);
+  ta.value = before + pad + t + after; const pos=(before+pad+t).length; ta.setSelectionRange(pos,pos);
+  ta.dispatchEvent(new Event("input",{bubbles:true}));
+}
+function micStart(btn){
+  const ta = btn.parentElement.querySelector("textarea"); if (!ta) return;
+  if (MIC.rec){ const same = MIC.btn===btn; micStop(); if (same) return; }
+  if (!SpeechRec){ toast("Voice typing isn't available in this browser. Use Chrome or Safari, or tap the microphone on your phone's keyboard."); return; }
+  const rec = new SpeechRec(); rec.lang = "en-US"; rec.continuous = true; rec.interimResults = false;
+  rec.onresult = e => { for (let i=e.resultIndex;i<e.results.length;i++) if (e.results[i].isFinal) micInsert(ta, e.results[i][0].transcript); };
+  rec.onerror = e => {
+    if (e.error==="not-allowed"||e.error==="service-not-allowed") toast("The microphone is blocked. Allow microphone access for this site in your browser settings.");
+    else if (e.error==="network") toast("Voice typing couldn't reach the speech service. Brave blocks it; use Chrome or Safari, or your keyboard's microphone.");
+    else if (e.error!=="no-speech" && e.error!=="aborted") toast("Voice typing stopped ("+e.error+").");
+  };
+  rec.onend = () => micReset();
+  MIC.rec=rec; MIC.ta=ta; MIC.btn=btn; btn.classList.add("on"); btn.setAttribute("aria-pressed","true"); btn.title="Listening… tap to stop";
+  try { rec.start(); ta.focus(); } catch { micReset(); }
+}
+function addMics(root=document){
+  root.querySelectorAll("textarea:not([data-mic])").forEach(ta=>{
+    ta.dataset.mic="1"; if (ta.id==="pf-sig") return;
+    const wrap=document.createElement("span"); wrap.className="mic-wrap"; ta.parentNode.insertBefore(wrap, ta); wrap.appendChild(ta);
+    const b=document.createElement("button"); b.type="button"; b.className="mic-btn"; b.innerHTML=MIC_SVG; b.title="Talk instead of typing"; b.setAttribute("aria-label","Talk instead of typing"); b.setAttribute("aria-pressed","false");
+    wrap.appendChild(b);
+  });
+}
+document.addEventListener("click", e=>{ const b=e.target.closest(".mic-btn"); if (b){ e.preventDefault(); e.stopPropagation(); micStart(b); } }, true);
+new MutationObserver(()=>{ if (document.querySelector("textarea:not([data-mic])")) addMics(); }).observe(document.body,{childList:true,subtree:true});
+document.addEventListener("visibilitychange", ()=>{ if (document.hidden) micStop(); });
 
 /* ---------- Fans ---------- */
 const JOIN_URL = "https://timandmylesthompson.github.io/booking/join.html";
