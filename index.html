@@ -334,6 +334,8 @@ table.states tr:hover td{background:var(--sunken)}
 .ac-it{padding:8px 10px;cursor:pointer;display:flex;gap:6px;align-items:baseline}.ac-it .small{margin-left:auto}.ac-it.on,.ac-it:hover{background:var(--sunken,#eef2f1)}
 .mic-wrap{position:relative;display:block}.mic-wrap textarea{padding-right:46px}
 .mic-btn{position:absolute;right:8px;bottom:8px;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.mic-btn.busy{color:var(--accent);border-color:var(--accent);animation:micspin 1s linear infinite}@keyframes micspin{to{transform:rotate(360deg)}}
+.mic-tag{position:absolute;right:50px;bottom:14px;background:var(--surface);color:var(--muted);padding:2px 6px;border-radius:6px;border:1px solid var(--line);pointer-events:none}
 .mic-btn:hover{color:var(--accent);border-color:var(--accent)}
 .mic-btn.on{background:#b3261e;border-color:#b3261e;color:#fff;animation:micpulse 1.2s ease-in-out infinite}
 @keyframes micpulse{0%,100%{box-shadow:0 0 0 0 rgba(179,38,30,.45)}50%{box-shadow:0 0 0 8px rgba(179,38,30,0)}}
@@ -1160,7 +1162,7 @@ window.addEventListener("resize", acHide);
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 const MIC_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
 const MIC={rec:null, ta:null, btn:null};
-function micStop(){ try { MIC.rec && MIC.rec.stop(); } catch {} }
+function micStop(){ try { MIC.rec && MIC.rec.stop(); } catch {} try { WH.mr && WH.mr.state==='recording' && WH.mr.stop(); } catch {} }
 function micReset(){ if (MIC.btn){ MIC.btn.classList.remove("on"); MIC.btn.setAttribute("aria-pressed","false"); MIC.btn.title="Talk instead of typing"; } MIC.rec=null; MIC.ta=null; MIC.btn=null; }
 function micInsert(ta, text){
   const start=ta.selectionStart ?? ta.value.length, end=ta.selectionEnd ?? start, before=ta.value.slice(0,start), after=ta.value.slice(end);
@@ -1169,10 +1171,47 @@ function micInsert(ta, text){
   ta.value = before + pad + t + after; const pos=(before+pad+t).length; ta.setSelectionRange(pos,pos);
   ta.dispatchEvent(new Event("input",{bubbles:true}));
 }
+// Brave (and Firefox) don't offer the browser speech service, so there we record and
+// transcribe on this computer with Whisper (runs in the browser; model downloads once and is cached).
+const isBrave = !!(navigator.brave && navigator.brave.isBrave);
+const useLocalWhisper = isBrave || !SpeechRec;
+const WH={pipe:null, loading:null, mr:null, chunks:[], stream:null};
+function micStatus(btn, state, text){ btn.classList.toggle("on", state==="rec"); btn.classList.toggle("busy", state==="busy"); btn.title=text; btn.setAttribute("aria-label", text); const w=btn.parentElement; let tag=w.querySelector(".mic-tag"); if (!text||state==="idle"){ tag&&tag.remove(); return; } if(!tag){ tag=document.createElement("span"); tag.className="mic-tag small"; w.appendChild(tag); } tag.textContent=text; }
+async function whisperPipe(btn){
+  if (WH.pipe) return WH.pipe;
+  if (!WH.loading) WH.loading=(async()=>{
+    micStatus(btn,"busy","Getting voice typing ready (one-time download, about 75 MB)…");
+    const T = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/dist/transformers.min.js");
+    T.env.allowLocalModels=false;
+    WH.pipe = await T.pipeline("automatic-speech-recognition","Xenova/whisper-base.en");
+    return WH.pipe; })();
+  try { return await WH.loading; } catch(e){ WH.loading=null; throw e; }
+}
+async function to16k(blob){
+  const buf=await blob.arrayBuffer(); const ac=new (window.AudioContext||window.webkitAudioContext)();
+  const dec=await ac.decodeAudioData(buf); ac.close();
+  const off=new OfflineAudioContext(1, Math.ceil(dec.duration*16000), 16000); const src=off.createBufferSource(); src.buffer=dec; src.connect(off.destination); src.start();
+  return (await off.startRendering()).getChannelData(0);
+}
+async function whisperStart(btn, ta){
+  if (WH.mr){ const same=MIC.btn===btn; WH.mr.stop(); if (same) return; }
+  let stream; try { stream=await navigator.mediaDevices.getUserMedia({audio:true}); } catch { toast("The microphone is blocked. Click the lock icon by the address bar and allow the microphone for this site."); return; }
+  whisperPipe(btn).catch(()=>{}); // start the one-time download while you talk
+  const mr=new MediaRecorder(stream); WH.mr=mr; WH.chunks=[]; MIC.btn=btn; MIC.ta=ta;
+  mr.ondataavailable=e=>{ if (e.data.size) WH.chunks.push(e.data); };
+  mr.onstop=async()=>{ stream.getTracks().forEach(t=>t.stop()); WH.mr=null;
+    const blob=new Blob(WH.chunks,{type:mr.mimeType||"audio/webm"});
+    try { micStatus(btn,"busy","Turning your words into text…"); const pipe=await whisperPipe(btn); micStatus(btn,"busy","Turning your words into text…");
+      const audio=await to16k(blob); const out=await pipe(audio,{chunk_length_s:30, stride_length_s:5});
+      const text=(out&&out.text||"").replace(/\[[^\]]*\]|\([^)]*\)/g,"").replace(/\s+/g," ").trim(); // drop sound tags like [BLANK_AUDIO] or (chiming) if (text) micInsert(ta,text); else toast("I didn't catch any words. Try again a little closer to the mic.");
+    } catch(e){ console.error(e); toast("Voice typing couldn't start. Check your internet connection for the one-time download, then try again."); }
+    micStatus(btn,"idle",""); btn.title="Talk instead of typing"; MIC.btn=null; MIC.ta=null; };
+  mr.start(); micStatus(btn,"rec","Listening… tap the mic again when you're done");
+}
 function micStart(btn){
   const ta = btn.parentElement.querySelector("textarea"); if (!ta) return;
+  if (useLocalWhisper){ whisperStart(btn, ta); return; }
   if (MIC.rec){ const same = MIC.btn===btn; micStop(); if (same) return; }
-  if (!SpeechRec){ toast("Voice typing isn't available in this browser. Use Chrome or Safari, or tap the microphone on your phone's keyboard."); return; }
   const rec = new SpeechRec(); rec.lang = "en-US"; rec.continuous = true; rec.interimResults = false;
   rec.onresult = e => { for (let i=e.resultIndex;i<e.results.length;i++) if (e.results[i].isFinal) micInsert(ta, e.results[i][0].transcript); };
   rec.onerror = e => {
