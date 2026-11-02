@@ -342,6 +342,8 @@ table.states tr:hover td{background:var(--sunken)}
 .mic-btn.on{background:#b3261e;border-color:#b3261e;color:#fff;animation:micpulse 1.2s ease-in-out infinite}
 @keyframes micpulse{0%,100%{box-shadow:0 0 0 0 rgba(179,38,30,.45)}50%{box-shadow:0 0 0 8px rgba(179,38,30,0)}}
 .filters.searching select,.filters.searching label{opacity:.45}
+.dropzone{display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;padding:16px;border:2px dashed var(--line);border-radius:10px;cursor:pointer;color:var(--ink)}
+.dropzone:hover,.dropzone.over{border-color:var(--accent);background:var(--sunken)}
 </style>
 
 <header class="top">
@@ -1724,7 +1726,7 @@ function openEventForm(ev, preset={}){
       </div></details>
     <details class="grp" ${doneCount?"open":""}><summary>Advance checklist <span class="muted" id="ck-count">${doneCount}/${CHECKS.length}</span></summary>
       <div class="checks">${CHECKS.map(([k,t])=>`<label class="ck"><input type="checkbox" data-ck="${k}" ${ck[k]?"checked":""}> ${t}</label>`).join("")}</div></details>
-    <details class="grp" ${files.length?"open":""}><summary>Contract and photos <span class="muted" id="file-count">${files.length||""}</span></summary>
+    <details class="grp" ${files.length?"open":""}><summary>Posters, photos and contract <span class="muted" id="file-count">${files.length||""}</span></summary>
       <div class="files" id="ev-files"></div>
       <div id="ev-upload-wrap"></div>
     </details>
@@ -1784,23 +1786,42 @@ function openEventForm(ev, preset={}){
   };
   renderFiles();
   $("#ev-upload-wrap").innerHTML = S.assets
-    ? `<label class="btn" style="align-self:flex-start;flex-direction:row;color:var(--ink);font-size:14px">Take photo or add file<input type="file" id="ev-file" accept="image/*,application/pdf" hidden></label><span class="small muted" id="ev-upmsg"></span>`
+    ? `<label class="dropzone" id="ev-drop"><input type="file" id="ev-file" accept="image/*,application/pdf" multiple hidden>
+        <b>Add a poster, photo or contract</b><span class="small muted">Drag pictures or PDFs here, paste a screenshot (Ctrl+V or ⌘V), or click to take a photo or choose files.</span></label><span class="small muted" id="ev-upmsg"></span>`
     : `<p class="small muted">Sign in to add photos.</p>`;
-  $("#ev-file")?.addEventListener("change", async e => {
-    const file = e.target.files[0]; e.target.value = ""; if (!file) return;
-    const msg = $("#ev-upmsg"); msg.textContent = "Uploading…";
+  const addFile = async file => {
+    const msg = $("#ev-upmsg");
     try {
       const blob = await shrinkImage(file);
       const type = blob.type || file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "");
       const r = await S.assets.upload(blob, type ? {type} : undefined);
       S.signed = {...(S.signed||{}), [r.id]: r.url};
       files.push({id:r.id, type:r.contentType, name:file.name, at:new Date().toISOString()});
-      renderFiles(); await persistFiles(); msg.textContent = isNew ? "Added. Tap Add gig to keep it." : "Saved to this gig.";
+      renderFiles(); return true;
     } catch (err) {
-      msg.textContent = err?.code==="too_large" ? "That file is over 20 MB." : err?.code==="unsupported_type" ? "Use a photo (JPG or PNG) or a PDF." : "Upload failed. Try again.";
-      console.error(err);
+      msg.textContent = err?.code==="too_large" ? `${file.name||"That file"} is over 20 MB.` : err?.code==="unsupported_type" ? "Use a picture (JPG, PNG, GIF, WebP) or a PDF." : "Upload failed. Try again.";
+      console.error(err); return false;
     }
-  });
+  };
+  const addFiles = async list => {
+    const items = [...list].filter(f => f && (/^image\//.test(f.type) || /pdf/.test(f.type) || /\.pdf$/i.test(f.name||"")));
+    if (!items.length) { $("#ev-upmsg").textContent = "That isn't a picture or PDF."; return; }
+    const msg = $("#ev-upmsg"); let ok = 0;
+    for (let i = 0; i < items.length; i++) { msg.textContent = items.length > 1 ? `Uploading ${i+1} of ${items.length}…` : "Uploading…"; if (await addFile(items[i])) ok++; }
+    if (ok) { await persistFiles(); msg.textContent = (ok>1?`${ok} files added. `:"Added. ") + (isNew ? "Tap Add gig to keep it." : "Saved to this gig."); }
+  };
+  $("#ev-file")?.addEventListener("change", async e => { const fl = [...e.target.files]; e.target.value = ""; if (fl.length) await addFiles(fl); });
+  const dz = $("#ev-drop");
+  if (dz) {
+    ["dragenter","dragover"].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.add("over"); }));
+    ["dragleave","drop"].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.remove("over"); }));
+    dz.addEventListener("drop", e => { const fl = e.dataTransfer?.files; if (fl && fl.length) { $("#ev-files").closest("details").open = true; addFiles(fl); } });
+    // paste a screenshot anywhere in the gig form (text boxes still paste text normally)
+    $("#ev-form").addEventListener("paste", e => {
+      const imgs = [...(e.clipboardData?.items||[])].filter(it => it.kind==="file" && /^image\//.test(it.type)).map(it => { const f=it.getAsFile(); return f && !f.name ? new File([f], `pasted-${new Date().toISOString().slice(0,19).replace(/[:T]/g,"-")}.png`, {type:f.type}) : f; }).filter(Boolean);
+      if (!imgs.length) return; e.preventDefault(); $("#ev-files").closest("details").open = true; addFiles(imgs);
+    });
+  }
   $("#ev-files").addEventListener("click", async e => {
     const v = e.target.closest("[data-viewfile]"); if (v) { openViewer(files, +v.dataset.viewfile); return; }
     const b = e.target.closest("[data-rmfile]"); if (!b) return;
