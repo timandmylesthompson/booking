@@ -351,6 +351,7 @@ table.states tr:hover td{background:var(--sunken)}
 .filters.searching select,.filters.searching label{opacity:.45}
 .dropzone{display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;padding:16px;border:2px dashed var(--line);border-radius:10px;cursor:pointer;color:var(--ink)}
 .dropzone:hover,.dropzone.over{border-color:var(--accent);background:var(--sunken)}
+.ev .evday{opacity:.7;font-size:10px;margin-left:2px}
 </style>
 
 <header class="top">
@@ -646,7 +647,7 @@ function viewToday(){
       : `<p class="empty small">Nothing due. When you log an email, a follow-up date is set 10 days out.</p>`}
     </section>
     <section class="panel"><h2>Next 60 days <small>${soon.length} dates</small></h2>
-      ${soon.length ? `<ul class="plist">${soon.map(e=>{ const l=S.leads.get(e.leadId); return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title|| l?.name || "Date")}</div><div class="sub">${esc(e.status||"Hold")}${l? " · "+esc(place(l)):""}${e.fee? " · $"+esc(e.fee):""}</div></div><span class="mono small">${fmtDate(e.date)}</span></li>`;}).join("")}</ul>`
+      ${soon.length ? `<ul class="plist">${soon.map(e=>{ const l=S.leads.get(e.leadId); return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title|| l?.name || "Date")}</div><div class="sub">${esc(e.status||"Hold")}${l? " · "+esc(place(l)):""}${e.fee? " · $"+esc(e.fee):""}</div></div><span class="mono small">${fmtRange(e)}</span></li>`;}).join("")}</ul>`
       : `<p class="empty small">No dates yet. Add holds and confirmed shows from the Calendar or from any lead.</p>`}
     </section>
     <section class="panel"><h2>Start here <small>top unreached leads with email</small></h2>
@@ -750,7 +751,7 @@ function renderDetail(){
         <label>Status<select class="field" id="d-status">${STATUSES.map(s=>`<option ${s===st?"selected":""}>${s}</option>`).join("")}</select></label>
         <label>Follow up on<input class="field" type="date" id="d-follow" value="${esc(d.followUp)}"></label>
       </div>
-      ${evs.length?`<div style="margin-top:12px;display:flex;flex-direction:column;gap:4px">${evs.map(e=>`<button type="button" class="ev ${evClass(e)} k-${esc(e.kind||k)}" data-event="${esc(e.id)}">${fmtDate(e.date)} · ${esc(e.status||"Hold")}${e.fee?" · $"+esc(e.fee):""}</button>`).join("")}</div>`:""}
+      ${evs.length?`<div style="margin-top:12px;display:flex;flex-direction:column;gap:4px">${evs.map(e=>`<button type="button" class="ev ${evClass(e)} k-${esc(e.kind||k)}" data-event="${esc(e.id)}">${fmtRange(e)} · ${esc(e.status||"Hold")}${e.fee?" · $"+esc(e.fee):""}</button>`).join("")}</div>`:""}
     </div>
     <div class="d-sec">
       <h3>Contact</h3>
@@ -799,12 +800,18 @@ function renderTimeline(){
 
 /* ---------- Calendar ---------- */
 function evClass(e){ return e.status==="Cancelled" ? "cancel" : (e.status==="Hold" || !e.status) ? "hold" : ""; }
+function evDays(e){ const out=[]; if (!e.date) return out; const end = (e.endDate && e.endDate>e.date) ? e.endDate : e.date; const d=parseISO(e.date);
+  for (let i=0; i<62; i++){ const ds=iso(d); out.push(ds); if (ds>=end) break; d.setDate(d.getDate()+1); } return out; }
+function fmtRange(e){ if (!e.endDate || e.endDate<=e.date) return fmtDate(e.date); const a=parseISO(e.date), b=parseISO(e.endDate);
+  const sameY=a.getFullYear()===b.getFullYear(), sameM=sameY&&a.getMonth()===b.getMonth();
+  return `${a.toLocaleDateString(undefined,{month:"short",day:"numeric",...(sameY?{}:{year:"numeric"})})}–${b.toLocaleDateString(undefined,sameM?{day:"numeric",year:"numeric"}:{month:"short",day:"numeric",year:"numeric"})}`; }
 function viewCalendar(){
   if (!S.calMonth) { const d = new Date(); S.calMonth = new Date(d.getFullYear(), d.getMonth(), 1); }
   const m = S.calMonth, first = new Date(m), start = new Date(m); start.setDate(1 - first.getDay());
   const t = todayISO(), cells = [];
   const byDate = {};
-  S.events.forEach(e => (byDate[e.date] ||= []).push(e));
+  S.events.forEach(e => { // multi-day gigs (festivals) fill every day from start to end
+    const days = evDays(e); days.forEach((ds,i) => (byDate[ds] ||= []).push(days.length>1 ? {...e, _part:i+1, _of:days.length} : e)); });
   [...S.leads.values()].filter(l=>l.kind==="festival" && l.deadline).forEach(l => (byDate[l.deadline] ||= []).push({deadline:true, leadId:l.id, title:"Deadline: "+l.name, kind:"festival"}));
   for (let i=0;i<42;i++){
     const d = new Date(start); d.setDate(start.getDate()+i); const ds = iso(d);
@@ -812,9 +819,9 @@ function viewCalendar(){
     const evs = (byDate[ds]||[]).sort((a,b)=>String(a.time||"").localeCompare(String(b.time||"")));
     cells.push(`<div class="day ${d.getMonth()!==m.getMonth()?"out":""} ${ds===t?"is-today":""}" data-day="${ds}"><div class="dayhead"><span class="dn">${d.getDate()}</span><button type="button" class="addday" data-day="${ds}" aria-label="Add a gig on ${ds}">+</button></div>
       ${evs.map(e => e.deadline ? `<button type="button" class="ev deadline k-festival" data-open="${esc(e.leadId)}">${esc(e.title)}</button>`
-        : `<button type="button" class="ev ${evClass(e)} k-${esc(e.kind||kindOf(S.leads.get(e.leadId)))}" data-event="${esc(e.id)}">${e.time?esc(fmtTime(e.time))+" ":""}${esc(e.title||S.leads.get(e.leadId)?.name||"Date")}</button>`).join("")}</div>`);
+        : `<button type="button" class="ev ${evClass(e)} k-${esc(e.kind||kindOf(S.leads.get(e.leadId)))}" data-event="${esc(e.id)}" ${e._of?`title="Day ${e._part} of ${e._of}"`:""}>${e._of&&e._part>1?"↳ ":""}${e.time&&!(e._part>1)?esc(fmtTime(e.time))+" ":""}${esc(e.title||S.leads.get(e.leadId)?.name||"Date")}${e._of?` <span class="evday">${e._part}/${e._of}</span>`:""}</button>`).join("")}</div>`);
   }
-  const upcoming = S.events.filter(e=>e.date>=t && e.status!=="Cancelled").sort((a,b)=>a.date.localeCompare(b.date)).slice(0,25);
+  const upcoming = S.events.filter(e=>(e.endDate||e.date)>=t && e.status!=="Cancelled").sort((a,b)=>a.date.localeCompare(b.date)).slice(0,25);
   return `<div class="cal-head">
       <button class="btn" type="button" data-cal="-1" aria-label="Previous month">←</button>
       <h2>${m.toLocaleDateString(undefined,{month:"long",year:"numeric"})}</h2>
@@ -825,7 +832,7 @@ function viewCalendar(){
     </div>
     <div class="calwrap"><div class="cal">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>`<div class="dow">${d}</div>`).join("")}${cells.join("")}</div></div>
     <section class="panel upcoming"><h2>Upcoming <small>${upcoming.length} dates</small></h2>
-      ${upcoming.length?`<ul class="plist">${upcoming.map(e=>{const l=S.leads.get(e.leadId);return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title||l?.name||"Date")}</div><div class="sub">${esc(e.status||"Hold")}${l?" · "+esc(place(l)):""}</div></div><span class="mono small">${fmtDate(e.date)}${e.time?" · "+esc(fmtTime(e.time)):""}</span></li>`}).join("")}</ul>`:`<p class="empty small">Tap any day to add a gig. A day can hold as many gigs as you need; tap it again to add another.</p>`}
+      ${upcoming.length?`<ul class="plist">${upcoming.map(e=>{const l=S.leads.get(e.leadId);return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title||l?.name||"Date")}</div><div class="sub">${esc(e.status||"Hold")}${l?" · "+esc(place(l)):""}</div></div><span class="mono small">${fmtRange(e)}${e.time?" · "+esc(fmtTime(e.time)):""}</span></li>`}).join("")}</ul>`:`<p class="empty small">Tap any day to add a gig. A day can hold as many gigs as you need; tap it again to add another.</p>`}
     </section>`;
 }
 const fmtTime = t => { const [h,mm] = t.split(":").map(Number); return `${((h+11)%12)+1}${mm?":"+String(mm).padStart(2,"0"):""}${h<12?"a":"p"}`; };
@@ -1698,8 +1705,12 @@ function openEventForm(ev, preset={}){
     <label>Where<input class="field" id="ev-lead" list="ev-leads" value="${esc(l0?l0.name+" — "+place(l0):(ev.title||""))}" placeholder="Pick a venue or festival, or type any place">
       <datalist id="ev-leads">${opts.map(o=>`<option value="${esc(o.name+" — "+place(o))}">`).join("")}</datalist></label>
     <div class="grid2">
-      <label>Date<input class="field" id="ev-date" type="date" required value="${esc(ev.date)}"></label>
+      <label>Start date<input class="field" id="ev-date" type="date" required value="${esc(ev.date)}"></label>
+      <label>End date <span class="small muted">(for festivals or runs; leave blank for one day)</span><input class="field" id="ev-end" type="date" value="${esc(ev.endDate||"")}" min="${esc(ev.date||"")}"></label>
+    </div>
+    <div class="grid2">
       <label>Show time<input class="field" id="ev-time" type="time" value="${esc(ev.time||"")}"></label>
+      <span class="small muted" id="ev-span" style="align-self:end;padding-bottom:10px"></span>
     </div>
     <div class="grid2">
       <label>Status<select class="field" id="ev-status">${stOpts.map(x=>`<option ${(ev.status||"Hold")===x?"selected":""}>${x}</option>`).join("")}</select></label>
@@ -1838,22 +1849,26 @@ function openEventForm(ev, preset={}){
     files.splice(+b.dataset.rmfile, 1); renderFiles(); await persistFiles();
   });
 
+  const spanHint = () => { const s0=$("#ev-date").value, e0=$("#ev-end").value; $("#ev-end").min = s0||"";
+    $("#ev-span").textContent = s0 && e0 && e0>s0 ? `${evDays({date:s0,endDate:e0}).length} days: ${fmtRange({date:s0,endDate:e0})}` : (e0 && s0 && e0<s0 ? "End date is before the start date." : ""); };
+  ["#ev-date","#ev-end"].forEach(id => $(id).addEventListener("change", spanHint)); spanHint();
   $("#ev-form").addEventListener("submit", async e => {
     e.preventDefault();
     const where = $("#ev-lead").value.trim(), l = findLead(where), v = id => $(id).value.trim();
-    const data = { leadId: l ? l.id : null, title: l ? "" : where, date: $("#ev-date").value, time: $("#ev-time").value || null,
+    const data = { leadId: l ? l.id : null, title: l ? "" : where, date: $("#ev-date").value, endDate: ($("#ev-end").value && $("#ev-end").value > $("#ev-date").value) ? $("#ev-end").value : null, time: $("#ev-time").value || null,
       kind: $("#ev-kind").value, status: $("#ev-status").value,
       loadIn: v("#ev-loadin"), soundcheck: v("#ev-sound"), doors: v("#ev-doors"), setLength: v("#ev-setlen"),
       address: v("#ev-addr"), lodging: $("#ev-lodging").value, dayContact: v("#ev-dcname"), dayPhone: v("#ev-dcphone"),
       fee: v("#ev-fee"), deposit: v("#ev-deposit"), depositPaid: $("#ev-deppaid").checked, paid: $("#ev-paid").checked,
       checklist: ck, files, notes: $("#ev-notes").value, updatedAt: new Date().toISOString() };
     if (!data.date) return;
+    if ($("#ev-end").value && $("#ev-end").value < data.date) { toast("The end date is before the start date."); $("#ev-end").focus(); return; }
     const ref = S.db.collection("events").doc(evId);
     const ok = await write(() => isNew ? ref.set(data) : ref.update(data), isNew?"Gig added":"Saved");
     if (!ok) return;
     if (l) {
       const was = ev.status;
-      if (isNew || was !== data.status) write(() => logActivity(l.id, "note", `Gig ${data.status.toLowerCase()}: ${fmtDate(data.date)}${data.time?" at "+fmtTime(data.time):""}`));
+      if (isNew || was !== data.status) write(() => logActivity(l.id, "note", `Gig ${data.status.toLowerCase()}: ${fmtRange(data)}${data.time?" at "+fmtTime(data.time):""}`));
       if (["Confirmed","Contract sent","Contract signed"].includes(data.status) && l.status!=="Booked") setStatus(l, "Booked");
       else if (data.status==="Hold" && ["Not contacted","Contacted","Follow up"].includes(l.status||"Not contacted")) setStatus(l, "In talks");
     }
@@ -1869,8 +1884,8 @@ function openEventForm(ev, preset={}){
 function gcalLink(ev){
   const l = S.leads.get(ev.leadId), d = ev.date.replace(/-/g,"");
   let dates;
-  if (ev.time) { const st = d+"T"+ev.time.replace(":","")+"00"; const [h,m]=ev.time.split(":").map(Number); const end = new Date(2000,0,1,h+2,m); dates = st+"/"+d+"T"+String(end.getHours()).padStart(2,"0")+String(end.getMinutes()).padStart(2,"0")+"00"; }
-  else { const n = parseISO(ev.date); n.setDate(n.getDate()+1); dates = d+"/"+iso(n).replace(/-/g,""); }
+  if (ev.time && !ev.endDate) { const st = d+"T"+ev.time.replace(":","")+"00"; const [h,m]=ev.time.split(":").map(Number); const end = new Date(2000,0,1,h+2,m); dates = st+"/"+d+"T"+String(end.getHours()).padStart(2,"0")+String(end.getMinutes()).padStart(2,"0")+"00"; }
+  else { const n = parseISO(ev.endDate||ev.date); n.setDate(n.getDate()+1); dates = d+"/"+iso(n).replace(/-/g,""); }
   const q = new URLSearchParams({action:"TEMPLATE", text:`${ev.status==="Hold"?"HOLD: ":""}Tim & Myles — ${ev.title||l?.name||"Show"}`, dates, details:[ev.deal&&ev.deal!=="TBD"?ev.deal:"", ev.fee?"$"+ev.fee:"", ev.notes||""].filter(Boolean).join("\n"), location: l? place(l):""});
   return "https://calendar.google.com/calendar/render?"+q;
 }
