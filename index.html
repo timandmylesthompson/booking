@@ -810,8 +810,14 @@ function viewCalendar(){
   const m = S.calMonth, first = new Date(m), start = new Date(m); start.setDate(1 - first.getDay());
   const t = todayISO(), cells = [];
   const byDate = {};
-  S.events.forEach(e => { // multi-day gigs (festivals) fill every day from start to end
-    const days = evDays(e); days.forEach((ds,i) => (byDate[ds] ||= []).push(days.length>1 ? {...e, _part:i+1, _of:days.length} : e)); });
+  // multi-day gigs (festivals) fill every day from start to end, however long the span
+  const gs = new Date(start), ge = new Date(start); ge.setDate(ge.getDate()+41); const gS = iso(gs), gE = iso(ge);
+  S.events.forEach(e => { if (!e.date) return; const end = (e.endDate && e.endDate>e.date) ? e.endDate : e.date;
+    if (end < gS || e.date > gE) return;
+    const total = Math.round((parseISO(end)-parseISO(e.date))/864e5)+1;
+    const d = parseISO(e.date > gS ? e.date : gS);
+    while (iso(d) <= end && iso(d) <= gE) { const ds = iso(d); const part = Math.round((parseISO(ds)-parseISO(e.date))/864e5)+1;
+      (byDate[ds] ||= []).push(total>1 ? {...e, _part:part, _of:total} : e); d.setDate(d.getDate()+1); } });
   [...S.leads.values()].filter(l=>l.kind==="festival" && l.deadline).forEach(l => (byDate[l.deadline] ||= []).push({deadline:true, leadId:l.id, title:"Deadline: "+l.name, kind:"festival"}));
   for (let i=0;i<42;i++){
     const d = new Date(start); d.setDate(start.getDate()+i); const ds = iso(d);
@@ -1850,7 +1856,9 @@ function openEventForm(ev, preset={}){
   });
 
   const spanHint = () => { const s0=$("#ev-date").value, e0=$("#ev-end").value; $("#ev-end").min = s0||"";
-    $("#ev-span").textContent = s0 && e0 && e0>s0 ? `${evDays({date:s0,endDate:e0}).length} days: ${fmtRange({date:s0,endDate:e0})}` : (e0 && s0 && e0<s0 ? "End date is before the start date." : ""); };
+    const n0 = s0 && e0 && e0>s0 ? Math.round((parseISO(e0)-parseISO(s0))/864e5)+1 : 0;
+    $("#ev-span").textContent = n0 ? `${n0} days: ${fmtRange({date:s0,endDate:e0})}${n0>14?" — that's a long span; check the years.":""}` : (e0 && s0 && e0<s0 ? "End date is before the start date." : "");
+    $("#ev-span").style.color = n0>14 || (e0&&s0&&e0<s0) ? "#b3261e" : ""; };
   ["#ev-date","#ev-end"].forEach(id => $(id).addEventListener("change", spanHint)); spanHint();
   $("#ev-form").addEventListener("submit", async e => {
     e.preventDefault();
@@ -1863,6 +1871,7 @@ function openEventForm(ev, preset={}){
       checklist: ck, files, notes: $("#ev-notes").value, updatedAt: new Date().toISOString() };
     if (!data.date) return;
     if ($("#ev-end").value && $("#ev-end").value < data.date) { toast("The end date is before the start date."); $("#ev-end").focus(); return; }
+    if (data.endDate && (parseISO(data.endDate)-parseISO(data.date))/864e5 > 30 && !$("#ev-form").dataset.longok) { $("#ev-form").dataset.longok="1"; toast("That gig runs more than a month. Check the start and end years, then press Save again if it's right."); return; }
     const ref = S.db.collection("events").doc(evId);
     const ok = await write(() => isNew ? ref.set(data) : ref.update(data), isNew?"Gig added":"Saved");
     if (!ok) return;
