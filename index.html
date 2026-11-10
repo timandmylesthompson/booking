@@ -579,6 +579,8 @@ function blockIfDirty(){
 }
 async function saveAll(){
   const d = S.draft; const l = d && S.leads.get(d.leadId); if (!l || !isDirty()) return;
+  const badYr = v => v && (v < "2000-01-01" || v > "2099-12-31");
+  if (badYr(d.followUp) || badYr(d.lastContact)) { toast("That date's year looks wrong. Check the Contacted on and Follow up dates."); return; }
   const btn = $("#save-all"); if (btn) btn.disabled = true;
   const oldStatus = l.status || "Not contacted";
   const note = d.noteBody.trim(), contactKind = ["call","email","reply","text"].includes(d.noteKind);
