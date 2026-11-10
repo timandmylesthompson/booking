@@ -40,6 +40,9 @@
   --venue:#2563a8; --venue-soft:#dce8f6;      /* venues: blue */
   --festival:#c2620a; --festival-soft:#fbe7d3; /* festivals: orange */
   --private:#8a3f86; --private-soft:#f1e0f0;   /* private events: plum */
+  --watch:#b3261e; --watch-soft:#fbe1df;       /* big events to avoid booking against: red */
+  --busy:#5f6b66; --busy-soft:#e6e8e6;         /* personal / unavailable: gray */
+  --travel:#1f7a52; --travel-soft:#dcefe4;     /* travel days: green */
   --good:#2f7d32; --warn:#a86a00; --bad:#b3261e;
   --display:"Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
   --body:"Public Sans", "Helvetica Neue", Arial, sans-serif;
@@ -49,12 +52,12 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#121816; --surface:#1a2220; --sunken:#0e1312; --line:#2c3633; --ink:#e7ecea; --muted:#9aa7a2;
   --accent:#5fb8a5; --accent-ink:#0d1714;
-  --venue:#7fb2ec; --venue-soft:#1d2d40; --festival:#f0a35b; --festival-soft:#3a2614; --private:#d79bd3; --private-soft:#33213a;
+  --venue:#7fb2ec; --venue-soft:#1d2d40; --festival:#f0a35b; --festival-soft:#3a2614; --private:#d79bd3; --private-soft:#33213a; --watch:#f28b82; --watch-soft:#3d1f1d; --busy:#a6b0ac; --busy-soft:#2a302e; --travel:#6fcf9f; --travel-soft:#17302a;
   --good:#7cc47f; --warn:#e3b04f; --bad:#f2847b; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#121816; --surface:#1a2220; --sunken:#0e1312; --line:#2c3633; --ink:#e7ecea; --muted:#9aa7a2;
   --accent:#5fb8a5; --accent-ink:#0d1714;
-  --venue:#7fb2ec; --venue-soft:#1d2d40; --festival:#f0a35b; --festival-soft:#3a2614; --private:#d79bd3; --private-soft:#33213a;
+  --venue:#7fb2ec; --venue-soft:#1d2d40; --festival:#f0a35b; --festival-soft:#3a2614; --private:#d79bd3; --private-soft:#33213a; --watch:#f28b82; --watch-soft:#3d1f1d; --busy:#a6b0ac; --busy-soft:#2a302e; --travel:#6fcf9f; --travel-soft:#17302a;
   --good:#7cc47f; --warn:#e3b04f; --bad:#f2847b; color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -95,6 +98,11 @@ main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px
 .k-venue{--k:var(--venue);--ks:var(--venue-soft)}
 .k-festival{--k:var(--festival);--ks:var(--festival-soft)}
 .k-private{--k:var(--private);--ks:var(--private-soft)}
+.k-watch{--k:var(--watch);--ks:var(--watch-soft)}
+.k-busy{--k:var(--busy);--ks:var(--busy-soft)}
+.k-travel{--k:var(--travel);--ks:var(--travel-soft)}
+.ev.note{background:var(--ks);color:var(--k);border-style:solid;font-weight:600}
+#ev-form.nongig .gigonly{display:none}
 .kchip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--k);background:var(--ks);padding:2px 8px;border-radius:999px}
 .kdot{width:9px;height:9px;border-radius:50%;background:var(--k);flex:none}
 .pill{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
@@ -395,6 +403,9 @@ table.states td.overdue{color:var(--bad);font-weight:600}
 <script>
 (() => {
 const KINDS = {venue:"Venue", festival:"Festival", private:"Private event"};
+// Calendar dates that are not gigs. They never touch a venue's status, never count as money, and never go on the family calendar.
+const DATE_KINDS = {watch:"Big event (don't book against it)", busy:"Personal / unavailable", travel:"Travel day"};
+const isGig = e => !DATE_KINDS[e?.kind];
 const STATUSES = ["Not contacted","Contacted","Follow up","In talks","Booked","Declined","Do not contact"];
 const OPEN_STATUSES = ["Not contacted","Contacted","Follow up","In talks"];
 const RATINGS = ["Strong","Conditional","Hold","Reject","Unrated"];
@@ -456,7 +467,7 @@ function festDates(l){
 }
 function nextDate(l){
   const t = todayISO();
-  return S.events.filter(e => e.leadId===l.id && e.date >= t && e.status!=="Cancelled").sort((a,b)=>a.date.localeCompare(b.date))[0] || null;
+  return S.events.filter(e => e.leadId===l.id && isGig(e) && e.date >= t && e.status!=="Cancelled").sort((a,b)=>a.date.localeCompare(b.date))[0] || null;
 }
 /* One short date label for a lead: festival dates, or the next date on your calendar. */
 function dateLabel(l){
@@ -665,7 +676,7 @@ function viewToday(){
       : `<p class="empty small">Nothing due. When you log an email, a follow-up date is set 10 days out.</p>`}
     </section>
     <section class="panel"><h2>Next 60 days <small>${soon.length} dates</small></h2>
-      ${soon.length ? `<ul class="plist">${soon.map(e=>{ const l=S.leads.get(e.leadId); return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title|| l?.name || "Date")}</div><div class="sub">${esc(e.status||"Hold")}${l? " · "+esc(place(l)):""}${e.fee? " · $"+esc(e.fee):""}</div></div><span class="mono small">${fmtRange(e)}</span></li>`;}).join("")}</ul>`
+      ${soon.length ? `<ul class="plist">${soon.map(e=>{ const l=S.leads.get(e.leadId); return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title|| l?.name || "Date")}</div><div class="sub">${isGig(e)?esc(e.status||"Hold"):esc(DATE_KINDS[e.kind])}${l? " · "+esc(place(l)):""}${e.fee? " · $"+esc(e.fee):""}</div></div><span class="mono small">${fmtRange(e)}</span></li>`;}).join("")}</ul>`
       : `<p class="empty small">No dates yet. Add holds and confirmed shows from the Calendar or from any lead.</p>`}
     </section>
     <section class="panel"><h2>Start here <small>top unreached leads with email</small></h2>
@@ -818,12 +829,13 @@ function renderTimeline(){
 }
 
 /* ---------- Calendar ---------- */
-function evClass(e){ return e.status==="Cancelled" ? "cancel" : (e.status==="Hold" || !e.status) ? "hold" : ""; }
+function evClass(e){ return !isGig(e) ? "note" : e.status==="Cancelled" ? "cancel" : (e.status==="Hold" || !e.status) ? "hold" : ""; }
 function evDays(e){ const out=[]; if (!e.date) return out; const end = (e.endDate && e.endDate>e.date) ? e.endDate : e.date; const d=parseISO(e.date);
   for (let i=0; i<62; i++){ const ds=iso(d); out.push(ds); if (ds>=end) break; d.setDate(d.getDate()+1); } return out; }
 function fmtRange(e){ if (!e.endDate || e.endDate<=e.date) return fmtDate(e.date); const a=parseISO(e.date), b=parseISO(e.endDate);
   const sameY=a.getFullYear()===b.getFullYear(), sameM=sameY&&a.getMonth()===b.getMonth();
-  return `${a.toLocaleDateString(undefined,{month:"short",day:"numeric",...(sameY?{}:{year:"numeric"})})}–${b.toLocaleDateString(undefined,sameM?{day:"numeric",year:"numeric"}:{month:"short",day:"numeric",year:"numeric"})}`; }
+  const md = d => d.toLocaleDateString(undefined,{month:"short",day:"numeric"});
+  return sameM ? `${md(a)}–${b.getDate()}, ${b.getFullYear()}` : sameY ? `${md(a)}–${md(b)}, ${b.getFullYear()}` : `${md(a)}, ${a.getFullYear()}–${md(b)}, ${b.getFullYear()}`; }
 function viewCalendar(){
   if (!S.calMonth) { const d = new Date(); S.calMonth = new Date(d.getFullYear(), d.getMonth(), 1); }
   const m = S.calMonth, first = new Date(m), start = new Date(m); start.setDate(1 - first.getDay());
@@ -853,12 +865,12 @@ function viewCalendar(){
       <button class="btn" type="button" data-cal="1" aria-label="Next month">→</button>
       <button class="btn ghost" type="button" data-cal="0">Today</button>
       <button class="btn" type="button" data-copy="https://timandmylesthompson.github.io/booking/calendar.html" title="A read-only page of confirmed gigs for family. Holds, fees and contacts are never shown.">Copy family calendar link</button>
-      <button class="btn primary" type="button" id="cal-add">+ Add gig</button>
-      <div class="legend"><span class="k-venue"><span class="swatch"></span>Venue</span><span class="k-festival"><span class="swatch"></span>Festival</span><span class="k-private"><span class="swatch"></span>Private event</span><span><span class="swatch hold"></span>Hold (dashed)</span></div>
+      <button class="btn primary" type="button" id="cal-add">+ Add gig or date</button>
+      <div class="legend"><span class="k-venue"><span class="swatch"></span>Venue</span><span class="k-festival"><span class="swatch"></span>Festival</span><span class="k-private"><span class="swatch"></span>Private event</span><span><span class="swatch hold"></span>Hold (dashed)</span><span class="k-watch"><span class="swatch"></span>Big event to avoid</span><span class="k-busy"><span class="swatch"></span>Personal / unavailable</span><span class="k-travel"><span class="swatch"></span>Travel day</span></div>
     </div>
     <div class="calwrap"><div class="cal">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>`<div class="dow">${d}</div>`).join("")}${cells.join("")}</div></div>
     <section class="panel upcoming"><h2>Upcoming <small>${upcoming.length} dates</small></h2>
-      ${upcoming.length?`<ul class="plist">${upcoming.map(e=>{const l=S.leads.get(e.leadId);return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title||l?.name||"Date")}</div><div class="sub">${esc(e.status||"Hold")}${l?" · "+esc(place(l)):""}</div></div><span class="mono small">${fmtRange(e)}${e.time?" · "+esc(fmtTime(e.time)):""}</span></li>`}).join("")}</ul>`:`<p class="empty small">Tap any day to add a gig. A day can hold as many gigs as you need; tap it again to add another.</p>`}
+      ${upcoming.length?`<ul class="plist">${upcoming.map(e=>{const l=S.leads.get(e.leadId);return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title||l?.name||"Date")}</div><div class="sub">${isGig(e)?esc(e.status||"Hold"):esc(DATE_KINDS[e.kind])}${l?" · "+esc(place(l)):""}</div></div><span class="mono small">${fmtRange(e)}${e.time?" · "+esc(fmtTime(e.time)):""}</span></li>`}).join("")}</ul>`:`<p class="empty small">Tap any day to add a gig. A day can hold as many gigs as you need; tap it again to add another.</p>`}
     </section>`;
 }
 const fmtTime = t => { const [h,mm] = t.split(":").map(Number); return `${((h+11)%12)+1}${mm?":"+String(mm).padStart(2,"0"):""}${h<12?"a":"p"}`; };
@@ -1445,7 +1457,7 @@ function ctCsv(){
 /* ---------- Money ---------- */
 function viewMoney(){
   const t = todayISO();
-  const gigs = S.events.filter(e => e.status!=="Cancelled");
+  const gigs = S.events.filter(e => e.status!=="Cancelled" && isGig(e));
   const conf = gigs.filter(e => e.status!=="Hold");
   const holds = gigs.filter(e => e.status==="Hold");
   const sum = arr => arr.reduce((n,e)=> n + (money(e.fee)||0), 0);
@@ -1540,7 +1552,7 @@ async function exportSpreadsheet(btn){
       "Sources":(l.links||[]).map(x=>x.url).join("\n"), "Origin":l.origin||"", "Record ID":l.id}));
     const gigName = e => e.title || S.leads.get(e.leadId)?.name || "";
     const G = [...S.events].sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||""))).map(e => { const l = S.leads.get(e.leadId); return {
-      "Date":e.date, "Show time":e.time||"", "Where":gigName(e), "City/State":l?place(l):"", "Type":KINDS[e.kind]||"", "Status":e.status||"",
+      "Date":e.date, "Show time":e.time||"", "Where":gigName(e), "City/State":l?place(l):"", "Type":KINDS[e.kind]||DATE_KINDS[e.kind]||"", "Status":e.status||"",
       "Load-in":e.loadIn||"", "Soundcheck":e.soundcheck||"", "Doors":e.doors||"", "Set length":e.setLength||"", "Address":e.address||"", "Lodging":e.lodging||"",
       "Day-of contact":e.dayContact||"", "Day-of phone":e.dayPhone||"", "Fee":e.fee||"", "Deposit":e.deposit||"", "Deposit received":e.depositPaid?"Yes":"",
       "Paid in full":e.paid?"Yes":"", "Checklist done":CHECKS.filter(([k])=>e.checklist?.[k]).map(([,t])=>t).join("; "), "Files":(e.files||[]).map(f=>f.name||f.id).join("; "),
@@ -1816,9 +1828,10 @@ function openEventForm(ev, preset={}){
   const stOpts = ["Hold","Confirmed","Cancelled"]; if (ev.status && !stOpts.includes(ev.status)) stOpts.splice(2,0,ev.status);
   const has = (...k) => k.some(x => ev[x]);
   const doneCount = CHECKS.filter(([k])=>ck[k]).length;
-  sheet(`${head(isNew?"Add gig":"Edit gig")}
-  <form class="sb" id="ev-form">
-    <label>Where<input class="field" id="ev-lead" list="ev-leads" value="${esc(l0?l0.name+" — "+place(l0):(ev.title||""))}" placeholder="Pick a venue or festival, or type any place">
+  sheet(`${head(isNew?"Add gig or date":(isGig(ev)?"Edit gig":"Edit date"))}
+  <form class="sb ${isGig({kind})?"":"nongig"}" id="ev-form">
+    <label>Type<select class="field" id="ev-kind"><optgroup label="Gig">${Object.entries(KINDS).map(([v,t])=>`<option value="${v}" ${kind===v?"selected":""}>${t}</option>`).join("")}</optgroup><optgroup label="Not a gig">${Object.entries(DATE_KINDS).map(([v,t])=>`<option value="${v}" ${kind===v?"selected":""}>${t}</option>`).join("")}</optgroup></select></label>
+    <label><span id="ev-where-lab">${isGig({kind})?"Where":"What"}</span><input class="field" id="ev-lead" list="ev-leads" value="${esc(l0?l0.name+" — "+place(l0):(ev.title||""))}" placeholder="Pick a venue or festival, or type any place">
       <datalist id="ev-leads">${opts.map(o=>`<option value="${esc(o.name+" — "+place(o))}">`).join("")}</datalist></label>
     <div class="grid2">
       <label>Start date<input class="field" id="ev-date" type="date" required value="${esc(ev.date)}"></label>
@@ -1828,11 +1841,8 @@ function openEventForm(ev, preset={}){
       <label>Show time<input class="field" id="ev-time" type="time" value="${esc(ev.time||"")}"></label>
       <span class="small muted" id="ev-span" style="align-self:end;padding-bottom:10px"></span>
     </div>
-    <div class="grid2">
-      <label>Status<select class="field" id="ev-status">${stOpts.map(x=>`<option ${(ev.status||"Hold")===x?"selected":""}>${x}</option>`).join("")}</select></label>
-      <label>Color<select class="field" id="ev-kind">${Object.entries(KINDS).map(([v,t])=>`<option value="${v}" ${kind===v?"selected":""}>${t}</option>`).join("")}</select></label>
-    </div>
-    <details class="grp" ${has("loadIn","soundcheck","doors","setLength")?"open":""}><summary>Load-in and set times</summary>
+    <label class="gigonly">Status<select class="field" id="ev-status">${stOpts.map(x=>`<option ${(ev.status||"Hold")===x?"selected":""}>${x}</option>`).join("")}</select></label>
+    <details class="grp gigonly" ${has("loadIn","soundcheck","doors","setLength")?"open":""}><summary>Load-in and set times</summary>
       <div class="grid4">
         <label>Load-in<input class="field" id="ev-loadin" type="time" value="${esc(ev.loadIn||"")}"></label>
         <label>Soundcheck<input class="field" id="ev-sound" type="time" value="${esc(ev.soundcheck||"")}"></label>
@@ -1844,12 +1854,12 @@ function openEventForm(ev, preset={}){
       <div class="small" id="ev-maplink"></div>
       <label>Lodging<textarea class="field" id="ev-lodging" style="min-height:60px" placeholder="Hotel or host home, address, confirmation number">${esc(ev.lodging||"")}</textarea></label>
     </details>
-    <details class="grp" ${has("dayContact","dayPhone")?"open":""}><summary>Day-of contact</summary>
+    <details class="grp gigonly" ${has("dayContact","dayPhone")?"open":""}><summary>Day-of contact</summary>
       <div class="grid2">
         <label>Name<input class="field" id="ev-dcname" value="${esc(ev.dayContact||"")}" placeholder="Who meets you at the venue"></label>
         <label>Phone<input class="field" id="ev-dcphone" type="tel" value="${esc(ev.dayPhone||"")}"></label>
       </div></details>
-    <details class="grp" ${has("fee","deposit")||ev.paid?"open":""}><summary>Pay</summary>
+    <details class="grp gigonly" ${has("fee","deposit")||ev.paid?"open":""}><summary>Pay</summary>
       <div class="grid2">
         <label>Fee or deal<input class="field" id="ev-fee" value="${esc(ev.fee||"")}" placeholder="$800, or 70% of door"></label>
         <label>Deposit<input class="field" id="ev-deposit" value="${esc(ev.deposit||"")}" placeholder="$200"></label>
@@ -1858,13 +1868,13 @@ function openEventForm(ev, preset={}){
         <label class="ck"><input type="checkbox" id="ev-deppaid" ${ev.depositPaid?"checked":""}> Deposit received</label>
         <label class="ck"><input type="checkbox" id="ev-paid" ${ev.paid?"checked":""}> Paid in full</label>
       </div></details>
-    <details class="grp" ${doneCount?"open":""}><summary>Advance checklist <span class="muted" id="ck-count">${doneCount}/${CHECKS.length}</span></summary>
+    <details class="grp gigonly" ${doneCount?"open":""}><summary>Advance checklist <span class="muted" id="ck-count">${doneCount}/${CHECKS.length}</span></summary>
       <div class="checks">${CHECKS.map(([k,t])=>`<label class="ck"><input type="checkbox" data-ck="${k}" ${ck[k]?"checked":""}> ${t}</label>`).join("")}</div></details>
     <details class="grp" ${files.length?"open":""}><summary>Posters, photos and contract <span class="muted" id="file-count">${files.length||""}</span></summary>
       <div class="files" id="ev-files"></div>
       <div id="ev-upload-wrap"></div>
     </details>
-    <details class="grp" id="ev-fans-grp"><summary>Fans near this show <span class="muted" id="fan-count"></span></summary>
+    <details class="grp gigonly" id="ev-fans-grp"><summary>Fans near this show <span class="muted" id="fan-count"></span></summary>
       <div id="ev-fans"></div>
     </details>
     <label>Notes<textarea class="field" id="ev-notes" style="min-height:110px" placeholder="Anything else about this gig">${esc(ev.notes||"")}</textarea></label>
@@ -1874,8 +1884,9 @@ function openEventForm(ev, preset={}){
   const findLead = v => opts.find(o => (o.name+" — "+place(o))===v) || opts.find(o => o.name===v);
   const mapRefresh = () => { const a = $("#ev-addr").value.trim(); $("#ev-maplink").innerHTML = a ? `<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a)}">Open in Maps</a>` : ""; };
   mapRefresh(); $("#ev-addr").addEventListener("input", mapRefresh);
-  $("#ev-lead").addEventListener("change", e => { const l = findLead(e.target.value); if (l) { $("#ev-kind").value = kindOf(l); $(".sheet").className="sheet k-"+kindOf(l); if (!$("#ev-addr").value && l.locationText) { $("#ev-addr").value = l.locationText.split("\n").slice(0,3).join(", "); mapRefresh(); } } });
-  $("#ev-kind").addEventListener("change", e => $(".sheet").className = "sheet k-"+e.target.value);
+  $("#ev-lead").addEventListener("change", e => { const l = findLead(e.target.value); if (l) { if (isGig({kind:$("#ev-kind").value})) { $("#ev-kind").value = kindOf(l); $(".sheet").className="sheet k-"+kindOf(l); } if (!$("#ev-addr").value && l.locationText) { $("#ev-addr").value = l.locationText.split("\n").slice(0,3).join(", "); mapRefresh(); } } });
+  $("#ev-kind").addEventListener("change", e => { const k = e.target.value, g = isGig({kind:k}); $(".sheet").className = "sheet k-"+k; $("#ev-form").classList.toggle("nongig", !g);
+    $("#ev-where-lab").textContent = g ? "Where" : "What"; $("#ev-lead").placeholder = g ? "Pick a venue or festival, or type any place" : "e.g. Tin Pan South, CMA Fest, family wedding"; });
   const gigPlace = () => { const l = findLead($("#ev-lead").value.trim()); const a = $("#ev-addr").value;
     const st = l?.stateCode || (a.match(/,\s*([A-Z]{2})\b(?:\s+\d{5})?/)||[])[1] || "";
     const city = l?.city || (a.split(",").slice(-2,-1)[0]||"").trim();
@@ -1974,7 +1985,7 @@ function openEventForm(ev, preset={}){
     e.preventDefault();
     const where = $("#ev-lead").value.trim(), l = findLead(where), v = id => $(id).value.trim();
     const data = { leadId: l ? l.id : null, title: l ? "" : where, date: $("#ev-date").value, endDate: ($("#ev-end").value && $("#ev-end").value > $("#ev-date").value) ? $("#ev-end").value : null, time: $("#ev-time").value || null,
-      kind: $("#ev-kind").value, status: $("#ev-status").value,
+      kind: $("#ev-kind").value, status: isGig({kind:$("#ev-kind").value}) ? $("#ev-status").value : "Note",
       loadIn: v("#ev-loadin"), soundcheck: v("#ev-sound"), doors: v("#ev-doors"), setLength: v("#ev-setlen"),
       address: v("#ev-addr"), lodging: $("#ev-lodging").value, dayContact: v("#ev-dcname"), dayPhone: v("#ev-dcphone"),
       fee: v("#ev-fee"), deposit: v("#ev-deposit"), depositPaid: $("#ev-deppaid").checked, paid: $("#ev-paid").checked,
@@ -1983,9 +1994,9 @@ function openEventForm(ev, preset={}){
     if ($("#ev-end").value && $("#ev-end").value < data.date) { toast("The end date is before the start date."); $("#ev-end").focus(); return; }
     if (data.endDate && (parseISO(data.endDate)-parseISO(data.date))/864e5 > 30 && !$("#ev-form").dataset.longok) { $("#ev-form").dataset.longok="1"; toast("That gig runs more than a month. Check the start and end years, then press Save again if it's right."); return; }
     const ref = S.db.collection("events").doc(evId);
-    const ok = await write(() => isNew ? ref.set(data) : ref.update(data), isNew?"Gig added":"Saved");
+    const ok = await write(() => isNew ? ref.set(data) : ref.update(data), isNew?(isGig(data)?"Gig added":"Date added"):"Saved");
     if (!ok) return;
-    if (l) {
+    if (l && isGig(data)) {
       const was = ev.status;
       if (isNew || was !== data.status) write(() => logActivity(l.id, "note", `Gig ${data.status.toLowerCase()}: ${fmtRange(data)}${data.time?" at "+fmtTime(data.time):""}`));
       if (["Confirmed","Contract sent","Contract signed"].includes(data.status) && l.status!=="Booked") setStatus(l, "Booked");
