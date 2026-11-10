@@ -40,9 +40,8 @@
   --venue:#2563a8; --venue-soft:#dce8f6;      /* venues: blue */
   --festival:#c2620a; --festival-soft:#fbe7d3; /* festivals: orange */
   --private:#8a3f86; --private-soft:#f1e0f0;   /* private events: plum */
-  --watch:#b3261e; --watch-soft:#fbe1df;       /* big events to avoid booking against: red */
-  --busy:#5f6b66; --busy-soft:#e6e8e6;         /* personal / unavailable: gray */
-  --travel:#1f7a52; --travel-soft:#dcefe4;     /* travel days: green */
+  --gig:#1f6f5c; --gig-soft:#d7ece5;           /* calendar: every gig (and gig travel days) is green */
+  --other:#b3261e; --other-soft:#fbe1df;       /* calendar: anything else, don't book: red */
   --good:#2f7d32; --warn:#a86a00; --bad:#b3261e;
   --display:"Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
   --body:"Public Sans", "Helvetica Neue", Arial, sans-serif;
@@ -52,12 +51,12 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#121816; --surface:#1a2220; --sunken:#0e1312; --line:#2c3633; --ink:#e7ecea; --muted:#9aa7a2;
   --accent:#5fb8a5; --accent-ink:#0d1714;
-  --venue:#7fb2ec; --venue-soft:#1d2d40; --festival:#f0a35b; --festival-soft:#3a2614; --private:#d79bd3; --private-soft:#33213a; --watch:#f28b82; --watch-soft:#3d1f1d; --busy:#a6b0ac; --busy-soft:#2a302e; --travel:#6fcf9f; --travel-soft:#17302a;
+  --venue:#7fb2ec; --venue-soft:#1d2d40; --festival:#f0a35b; --festival-soft:#3a2614; --private:#d79bd3; --private-soft:#33213a; --gig:#5cc3a3; --gig-soft:#15302a; --other:#f28b82; --other-soft:#3d1f1d;
   --good:#7cc47f; --warn:#e3b04f; --bad:#f2847b; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#121816; --surface:#1a2220; --sunken:#0e1312; --line:#2c3633; --ink:#e7ecea; --muted:#9aa7a2;
   --accent:#5fb8a5; --accent-ink:#0d1714;
-  --venue:#7fb2ec; --venue-soft:#1d2d40; --festival:#f0a35b; --festival-soft:#3a2614; --private:#d79bd3; --private-soft:#33213a; --watch:#f28b82; --watch-soft:#3d1f1d; --busy:#a6b0ac; --busy-soft:#2a302e; --travel:#6fcf9f; --travel-soft:#17302a;
+  --venue:#7fb2ec; --venue-soft:#1d2d40; --festival:#f0a35b; --festival-soft:#3a2614; --private:#d79bd3; --private-soft:#33213a; --gig:#5cc3a3; --gig-soft:#15302a; --other:#f28b82; --other-soft:#3d1f1d;
   --good:#7cc47f; --warn:#e3b04f; --bad:#f2847b; color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -98,9 +97,8 @@ main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px
 .k-venue{--k:var(--venue);--ks:var(--venue-soft)}
 .k-festival{--k:var(--festival);--ks:var(--festival-soft)}
 .k-private{--k:var(--private);--ks:var(--private-soft)}
-.k-watch{--k:var(--watch);--ks:var(--watch-soft)}
-.k-busy{--k:var(--busy);--ks:var(--busy-soft)}
-.k-travel{--k:var(--travel);--ks:var(--travel-soft)}
+.k-gig{--k:var(--gig);--ks:var(--gig-soft)}
+.k-other{--k:var(--other);--ks:var(--other-soft)}
 .ev.note{background:var(--ks);color:var(--k);border-style:solid;font-weight:600}
 #ev-form.nongig .gigonly{display:none}
 .kchip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--k);background:var(--ks);padding:2px 8px;border-radius:999px}
@@ -404,8 +402,10 @@ table.states td.overdue{color:var(--bad);font-weight:600}
 (() => {
 const KINDS = {venue:"Venue", festival:"Festival", private:"Private event"};
 // Calendar dates that are not gigs. They never touch a venue's status, never count as money, and never go on the family calendar.
-const DATE_KINDS = {watch:"Big event (don't book against it)", busy:"Personal / unavailable", travel:"Travel day"};
+const DATE_KINDS = {travel:"Travel day for a gig", busy:"Other: don't book this date"};
 const isGig = e => !DATE_KINDS[e?.kind];
+// Calendar colors: just two. Gigs and gig travel days are one color; everything else (reunions, big events, days off) is the other.
+const calK = e => (e?.kind==="busy" || e?.kind==="watch") ? "k-other" : "k-gig";
 const STATUSES = ["Not contacted","Contacted","Follow up","In talks","Booked","Declined","Do not contact"];
 const OPEN_STATUSES = ["Not contacted","Contacted","Follow up","In talks"];
 const RATINGS = ["Strong","Conditional","Hold","Reject","Unrated"];
@@ -676,7 +676,7 @@ function viewToday(){
       : `<p class="empty small">Nothing due. When you log an email, a follow-up date is set 10 days out.</p>`}
     </section>
     <section class="panel"><h2>Next 60 days <small>${soon.length} dates</small></h2>
-      ${soon.length ? `<ul class="plist">${soon.map(e=>{ const l=S.leads.get(e.leadId); return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title|| l?.name || "Date")}</div><div class="sub">${isGig(e)?esc(e.status||"Hold"):esc(DATE_KINDS[e.kind])}${l? " · "+esc(place(l)):""}${e.fee? " · $"+esc(e.fee):""}</div></div><span class="mono small">${fmtRange(e)}</span></li>`;}).join("")}</ul>`
+      ${soon.length ? `<ul class="plist">${soon.map(e=>{ const l=S.leads.get(e.leadId); return `<li class="${calK(e)}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title|| l?.name || "Date")}</div><div class="sub">${isGig(e)?esc(e.status||"Hold"):esc(DATE_KINDS[e.kind])}${l? " · "+esc(place(l)):""}${e.fee? " · $"+esc(e.fee):""}</div></div><span class="mono small">${fmtRange(e)}</span></li>`;}).join("")}</ul>`
       : `<p class="empty small">No dates yet. Add holds and confirmed shows from the Calendar or from any lead.</p>`}
     </section>
     <section class="panel"><h2>Start here <small>top unreached leads with email</small></h2>
@@ -781,7 +781,7 @@ function renderDetail(){
         <label>Contacted on<input class="field" type="date" id="d-contacted" value="${esc(d.lastContact)}"></label>
         <label>Follow up on<input class="field" type="date" id="d-follow" value="${esc(d.followUp)}"></label>
       </div>
-      ${evs.length?`<div style="margin-top:12px;display:flex;flex-direction:column;gap:4px">${evs.map(e=>`<button type="button" class="ev ${evClass(e)} k-${esc(e.kind||k)}" data-event="${esc(e.id)}">${fmtRange(e)} · ${esc(e.status||"Hold")}${e.fee?" · $"+esc(e.fee):""}</button>`).join("")}</div>`:""}
+      ${evs.length?`<div style="margin-top:12px;display:flex;flex-direction:column;gap:4px">${evs.map(e=>`<button type="button" class="ev ${evClass(e)} ${calK(e)}" data-event="${esc(e.id)}">${fmtRange(e)} · ${esc(e.status||"Hold")}${e.fee?" · $"+esc(e.fee):""}</button>`).join("")}</div>`:""}
     </div>
     <div class="d-sec">
       <h3>Contact</h3>
@@ -829,7 +829,7 @@ function renderTimeline(){
 }
 
 /* ---------- Calendar ---------- */
-function evClass(e){ return !isGig(e) ? "note" : e.status==="Cancelled" ? "cancel" : (e.status==="Hold" || !e.status) ? "hold" : ""; }
+function evClass(e){ return (e.kind==="busy"||e.kind==="watch") ? "note" : e.kind==="travel" ? "" : e.status==="Cancelled" ? "cancel" : (e.status==="Hold" || !e.status) ? "hold" : ""; }
 function evDays(e){ const out=[]; if (!e.date) return out; const end = (e.endDate && e.endDate>e.date) ? e.endDate : e.date; const d=parseISO(e.date);
   for (let i=0; i<62; i++){ const ds=iso(d); out.push(ds); if (ds>=end) break; d.setDate(d.getDate()+1); } return out; }
 function fmtRange(e){ if (!e.endDate || e.endDate<=e.date) return fmtDate(e.date); const a=parseISO(e.date), b=parseISO(e.endDate);
@@ -856,7 +856,7 @@ function viewCalendar(){
     const evs = (byDate[ds]||[]).sort((a,b)=>String(a.time||"").localeCompare(String(b.time||"")));
     cells.push(`<div class="day ${d.getMonth()!==m.getMonth()?"out":""} ${ds===t?"is-today":""}" data-day="${ds}"><div class="dayhead"><span class="dn">${d.getDate()}</span><button type="button" class="addday" data-day="${ds}" aria-label="Add a gig on ${ds}">+</button></div>
       ${evs.map(e => e.deadline ? `<button type="button" class="ev deadline k-festival" data-open="${esc(e.leadId)}">${esc(e.title)}</button>`
-        : `<button type="button" class="ev ${evClass(e)} k-${esc(e.kind||kindOf(S.leads.get(e.leadId)))}" data-event="${esc(e.id)}" ${e._of?`title="Day ${e._part} of ${e._of}"`:""}>${e._of&&e._part>1?"↳ ":""}${e.time&&!(e._part>1)?esc(fmtTime(e.time))+" ":""}${esc(e.title||S.leads.get(e.leadId)?.name||"Date")}${e._of?` <span class="evday">${e._part}/${e._of}</span>`:""}</button>`).join("")}</div>`);
+        : `<button type="button" class="ev ${evClass(e)} ${calK(e)}" data-event="${esc(e.id)}" ${e._of?`title="Day ${e._part} of ${e._of}"`:""}>${e._of&&e._part>1?"↳ ":""}${e.time&&!(e._part>1)?esc(fmtTime(e.time))+" ":""}${esc(e.title||S.leads.get(e.leadId)?.name||"Date")}${e._of?` <span class="evday">${e._part}/${e._of}</span>`:""}</button>`).join("")}</div>`);
   }
   const upcoming = S.events.filter(e=>(e.endDate||e.date)>=t && e.status!=="Cancelled").sort((a,b)=>a.date.localeCompare(b.date)).slice(0,25);
   return `<div class="cal-head">
@@ -866,11 +866,11 @@ function viewCalendar(){
       <button class="btn ghost" type="button" data-cal="0">Today</button>
       <button class="btn" type="button" data-copy="https://timandmylesthompson.github.io/booking/calendar.html" title="A read-only page of confirmed gigs for family. Holds, fees and contacts are never shown.">Copy family calendar link</button>
       <button class="btn primary" type="button" id="cal-add">+ Add gig or date</button>
-      <div class="legend"><span class="k-venue"><span class="swatch"></span>Venue</span><span class="k-festival"><span class="swatch"></span>Festival</span><span class="k-private"><span class="swatch"></span>Private event</span><span><span class="swatch hold"></span>Hold (dashed)</span><span class="k-watch"><span class="swatch"></span>Big event to avoid</span><span class="k-busy"><span class="swatch"></span>Personal / unavailable</span><span class="k-travel"><span class="swatch"></span>Travel day</span></div>
+      <div class="legend"><span class="k-gig"><span class="swatch"></span>Gig (and gig travel)</span><span class="k-gig"><span class="swatch hold" style="border-color:var(--gig)"></span>Gig on hold (dashed)</span><span class="k-other"><span class="swatch"></span>Other: don't book</span></div>
     </div>
     <div class="calwrap"><div class="cal">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>`<div class="dow">${d}</div>`).join("")}${cells.join("")}</div></div>
     <section class="panel upcoming"><h2>Upcoming <small>${upcoming.length} dates</small></h2>
-      ${upcoming.length?`<ul class="plist">${upcoming.map(e=>{const l=S.leads.get(e.leadId);return `<li class="k-${esc(e.kind||kindOf(l))}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title||l?.name||"Date")}</div><div class="sub">${isGig(e)?esc(e.status||"Hold"):esc(DATE_KINDS[e.kind])}${l?" · "+esc(place(l)):""}</div></div><span class="mono small">${fmtRange(e)}${e.time?" · "+esc(fmtTime(e.time)):""}</span></li>`}).join("")}</ul>`:`<p class="empty small">Tap any day to add a gig. A day can hold as many gigs as you need; tap it again to add another.</p>`}
+      ${upcoming.length?`<ul class="plist">${upcoming.map(e=>{const l=S.leads.get(e.leadId);return `<li class="${calK(e)}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title||l?.name||"Date")}</div><div class="sub">${isGig(e)?esc(e.status||"Hold"):esc(DATE_KINDS[e.kind])}${l?" · "+esc(place(l)):""}</div></div><span class="mono small">${fmtRange(e)}${e.time?" · "+esc(fmtTime(e.time)):""}</span></li>`}).join("")}</ul>`:`<p class="empty small">Tap any day to add a gig. A day can hold as many gigs as you need; tap it again to add another.</p>`}
     </section>`;
 }
 const fmtTime = t => { const [h,mm] = t.split(":").map(Number); return `${((h+11)%12)+1}${mm?":"+String(mm).padStart(2,"0"):""}${h<12?"a":"p"}`; };
@@ -1830,7 +1830,7 @@ function openEventForm(ev, preset={}){
   const doneCount = CHECKS.filter(([k])=>ck[k]).length;
   sheet(`${head(isNew?"Add gig or date":(isGig(ev)?"Edit gig":"Edit date"))}
   <form class="sb ${isGig({kind})?"":"nongig"}" id="ev-form">
-    <label>Type<select class="field" id="ev-kind"><optgroup label="Gig">${Object.entries(KINDS).map(([v,t])=>`<option value="${v}" ${kind===v?"selected":""}>${t}</option>`).join("")}</optgroup><optgroup label="Not a gig">${Object.entries(DATE_KINDS).map(([v,t])=>`<option value="${v}" ${kind===v?"selected":""}>${t}</option>`).join("")}</optgroup></select></label>
+    <label>What is this?<select class="field" id="ev-kind"><optgroup label="Gig (gig color)">${[["venue","Gig at a venue"],["festival","Gig at a festival"],["private","Private gig (house concert, party)"],["travel","Travel day for a gig"]].map(([v,t])=>`<option value="${v}" ${kind===v?"selected":""}>${t}</option>`).join("")}</optgroup><optgroup label="Not a gig (other color)"><option value="busy" ${(kind==="busy"||kind==="watch")?"selected":""}>Other: don't book this date (family, big event, day off)</option></optgroup></select></label>
     <label><span id="ev-where-lab">${isGig({kind})?"Where":"What"}</span><input class="field" id="ev-lead" list="ev-leads" value="${esc(l0?l0.name+" — "+place(l0):(ev.title||""))}" placeholder="Pick a venue or festival, or type any place">
       <datalist id="ev-leads">${opts.map(o=>`<option value="${esc(o.name+" — "+place(o))}">`).join("")}</datalist></label>
     <div class="grid2">
@@ -1880,13 +1880,13 @@ function openEventForm(ev, preset={}){
     <label>Notes<textarea class="field" id="ev-notes" style="min-height:110px" placeholder="Anything else about this gig">${esc(ev.notes||"")}</textarea></label>
     ${!isNew?`<a class="small" target="_blank" rel="noopener" href="${esc(gcalLink(ev))}">Add to Google Calendar</a>`:""}
     <div class="foot">${!isNew?`<button class="btn danger" type="button" id="ev-del" style="margin-right:auto">Delete</button>`:""}${l0?`<button class="btn" type="button" id="ev-goto">Open venue</button>`:""}<button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">${isNew?"Add gig":"Save"}</button></div>
-  </form>`, kind);
+  </form>`, calK({kind}).slice(2));
   const findLead = v => opts.find(o => (o.name+" — "+place(o))===v) || opts.find(o => o.name===v);
   const mapRefresh = () => { const a = $("#ev-addr").value.trim(); $("#ev-maplink").innerHTML = a ? `<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a)}">Open in Maps</a>` : ""; };
   mapRefresh(); $("#ev-addr").addEventListener("input", mapRefresh);
-  $("#ev-lead").addEventListener("change", e => { const l = findLead(e.target.value); if (l) { if (isGig({kind:$("#ev-kind").value})) { $("#ev-kind").value = kindOf(l); $(".sheet").className="sheet k-"+kindOf(l); } if (!$("#ev-addr").value && l.locationText) { $("#ev-addr").value = l.locationText.split("\n").slice(0,3).join(", "); mapRefresh(); } } });
-  $("#ev-kind").addEventListener("change", e => { const k = e.target.value, g = isGig({kind:k}); $(".sheet").className = "sheet k-"+k; $("#ev-form").classList.toggle("nongig", !g);
-    $("#ev-where-lab").textContent = g ? "Where" : "What"; $("#ev-lead").placeholder = g ? "Pick a venue or festival, or type any place" : "e.g. Tin Pan South, CMA Fest, family wedding"; });
+  $("#ev-lead").addEventListener("change", e => { const l = findLead(e.target.value); if (l) { if (isGig({kind:$("#ev-kind").value})) { $("#ev-kind").value = kindOf(l); } if (!$("#ev-addr").value && l.locationText) { $("#ev-addr").value = l.locationText.split("\n").slice(0,3).join(", "); mapRefresh(); } } });
+  $("#ev-kind").addEventListener("change", e => { const k = e.target.value, g = isGig({kind:k}) && k!=="watch"; $(".sheet").className = "sheet "+calK({kind:k}); $("#ev-form").classList.toggle("nongig", !g);
+    $("#ev-where-lab").textContent = g ? "Where" : "What"; $("#ev-lead").placeholder = g ? "Pick a venue or festival, or type any place" : k==="travel" ? "e.g. Drive to California" : "e.g. Tin Pan South, family reunion, day off"; });
   const gigPlace = () => { const l = findLead($("#ev-lead").value.trim()); const a = $("#ev-addr").value;
     const st = l?.stateCode || (a.match(/,\s*([A-Z]{2})\b(?:\s+\d{5})?/)||[])[1] || "";
     const city = l?.city || (a.split(",").slice(-2,-1)[0]||"").trim();
