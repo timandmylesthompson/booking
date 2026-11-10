@@ -299,6 +299,16 @@ table.states td.n{font-family:var(--mono);text-align:right}
 table.states tr{cursor:pointer}
 table.states tr:hover td{background:var(--sunken)}
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r)}
+.ct-bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin-bottom:12px}
+.ct-bar label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.ct-sum{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.ct-sum button{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:6px 12px;font:inherit;color:inherit;cursor:pointer;text-align:left}
+.ct-sum button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.ct-sum .big{font-family:var(--mono);font-size:18px;font-weight:700;display:block}
+.ct-sum .lab{font-size:12px;color:var(--muted)}
+table.states th[data-ct-sort]{cursor:pointer;user-select:none}
+table.states td.overdue{color:var(--bad);font-weight:600}
+@media (max-width:860px){table.ct .hide-sm{display:none}table.ct td:nth-child(2){min-width:170px}}
 .back{display:none}
 .savebar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom,0px));margin:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   background:var(--ink);color:var(--surface);padding:10px 12px 10px 16px;border-radius:10px;box-shadow:0 10px 24px rgb(0 0 0 / .22);z-index:4}
@@ -360,6 +370,7 @@ table.states tr:hover td{background:var(--sunken)}
   <nav id="nav" aria-label="Views">
     <a href="#today" data-view="today">Today</a>
     <a href="#leads" data-view="leads">Leads</a>
+    <a href="#contacted" data-view="contacted">Contacted</a>
     <a href="#calendar" data-view="calendar">Calendar</a>
     <a href="#money" data-view="money">Money</a>
     <a href="#fans" data-view="fans">Fans</a>
@@ -610,7 +621,7 @@ function goBack(){
 /* ---------- Routing ---------- */
 function go(view){ if (view !== S.view && S.view==="leads" && blockIfDirty()) return; pushHist(); S.view = view; if (location.hash !== "#"+view) history.replaceState(null,"","#"+view); render(); window.scrollTo(0,0); }
 function openLead(id){ if (id !== S.selected && blockIfDirty()) return; if (id !== S.selected || S.view!=="leads" || !document.body.classList.contains("show-detail")) pushHist(); S.selected = id; S.view = "leads"; document.body.classList.add("show-detail"); history.replaceState(null,"","#leads"); render(); window.scrollTo(0,0); }
-window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (["today","leads","calendar","money","fans","templates","states","tour"].includes(v)) { S.view=v; render(); } });
+window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (["today","leads","calendar","money","fans","templates","states","tour","contacted"].includes(v)) { S.view=v; render(); } });
 
 function render(){
   const bb = $("#btn-back"); if (bb) bb.disabled = !S.hist.length;
@@ -626,6 +637,7 @@ function render(){
   else if (S.view==="fans") m.innerHTML = viewFans();
   else if (S.view==="states") m.innerHTML = viewStates();
   else if (S.view==="tour") { m.innerHTML = viewTour(); afterTour(); }
+  else if (S.view==="contacted") m.innerHTML = viewContacted();
 }
 function renderNoDb(){
   $("#main").innerHTML = `<div class="empty"><h3>Sign in to see your booking data</h3><p>Reload the page and sign in with your email.</p></div>`;
@@ -1339,6 +1351,94 @@ function viewFans(){
     : `<div class="empty"><h3>No fans on the list yet</h3><p>Open the sign-up QR code at your next show and mention it from the stage. Each person who scans it lands here, sorted by state.</p></div>`}`;
 }
 
+/* ---------- Contacted: who you reached out to, and when ---------- */
+// Uses each lead's "Contacted on" date (the most recent contact). Leads marked contacted without a date are listed separately.
+const CT_DEF = {range:"90", from:"", to:"", status:"", kind:"all", state:"", q:"", sort:"date", dir:-1};
+S.ct = (()=>{ try { return {...CT_DEF, ...JSON.parse(localStorage.getItem("tm-ct")||"{}")}; } catch { return {...CT_DEF}; } })();
+const saveCt = () => { try { localStorage.setItem("tm-ct", JSON.stringify(S.ct)); } catch {} };
+const CT_RANGES = {"7":"Last 7 days","30":"Last 30 days","90":"Last 90 days","year":"This year","all":"All time","custom":"Custom dates"};
+function ctBounds(){
+  const c = S.ct, t = todayISO();
+  if (c.range==="all") return ["", ""];
+  if (c.range==="year") return [t.slice(0,4)+"-01-01", ""];
+  if (c.range==="custom") return [c.from||"", c.to||""];
+  return [addDays(-(+c.range)), ""];
+}
+const daysAgo = d => Math.round((parseISO(todayISO()) - parseISO(d)) / 864e5);
+const ctOverdue = l => l.followUp && l.followUp < todayISO() && OPEN_STATUSES.includes(l.status||"Not contacted");
+function ctRows(){
+  const c = S.ct, [from, to] = ctBounds(), words = srchNorm(c.q).split(" ").filter(Boolean);
+  const reached = [...S.leads.values()].filter(l => l.lastContact || !["Not contacted","Do not contact"].includes(l.status||"Not contacted"));
+  const base = reached.filter(l => (c.kind==="all" || kindOf(l)===c.kind) && (!c.state || l.stateCode===c.state) && (!words.length || words.every(w => leadHay(l).includes(w))));
+  const dated = base.filter(l => l.lastContact && (!from || l.lastContact >= from) && (!to || l.lastContact <= to));
+  const undated = base.filter(l => !l.lastContact);
+  const shown = dated.filter(l => !c.status || (c.status==="_overdue" ? ctOverdue(l) : (l.status||"Not contacted")===c.status));
+  return {reached, dated, undated, shown: ctSort(shown)};
+}
+function ctSort(arr){
+  const c = S.ct, d = c.dir, s = (a,b) => String(a||"").localeCompare(String(b||""));
+  const by = {
+    date:   (a,b) => s(a.lastContact,b.lastContact),
+    name:   (a,b) => s(a.name,b.name),
+    place:  (a,b) => s(a.stateCode,b.stateCode) || s(a.city,b.city),
+    status: (a,b) => STATUSES.indexOf(a.status||"Not contacted") - STATUSES.indexOf(b.status||"Not contacted"),
+    follow: (a,b) => s(a.followUp,b.followUp),
+    contact:(a,b) => s(a.contactName,b.contactName),
+  }[c.sort] || (()=>0);
+  const key = {follow:"followUp", contact:"contactName"}[c.sort];
+  const blanksLast = (a,b) => key ? (a[key]?0:1)-(b[key]?0:1) : 0;   // empty follow-up or contact always at the bottom
+  return arr.slice().sort((a,b) => blanksLast(a,b) || d*by(a,b) || s(b.lastContact,a.lastContact) || s(a.name,b.name));
+}
+function viewContacted(){
+  const c = S.ct, t = todayISO(), {reached, dated, undated, shown} = ctRows();
+  const counts = {}; dated.forEach(l => { const k = l.status||"Not contacted"; counts[k] = (counts[k]||0)+1; });
+  const overdueN = dated.filter(ctOverdue).length;
+  const states = [...new Set(reached.map(l=>l.stateCode).filter(Boolean))].sort();
+  const arrow = k => c.sort===k ? (c.dir<0 ? " ↓" : " ↑") : "";
+  const th = (k, label, cls="") => `<th data-ct-sort="${k}" class="${cls}" title="Sort by this column" aria-sort="${c.sort===k?(c.dir<0?"descending":"ascending"):"none"}">${label}${arrow(k)}</th>`;
+  const sumBtn = (key, n, label) => `<button type="button" data-ct-status="${esc(key)}" aria-pressed="${c.status===key}"><span class="big">${n}</span><span class="lab">${esc(label)}</span></button>`;
+  const row = l => { const st = l.status||"Not contacted", od = ctOverdue(l);
+    return `<tr data-open="${esc(l.id)}">
+      <td class="mono small" style="white-space:nowrap">${l.lastContact?esc(fmtDate(l.lastContact)):"No date"}</td>
+      <td><strong>${esc(l.name)}</strong>${kindOf(l)!=="venue"?` <span class="small muted">· ${esc(KINDS[kindOf(l)]||"")}</span>`:""}</td>
+      <td class="small">${esc(place(l))}</td>
+      <td class="small hide-sm">${esc(l.contactName||"")}</td>
+      <td class="small">${esc(st)}</td>
+      <td class="mono small ${od?"overdue":""}" style="white-space:nowrap">${l.followUp?esc(fmtDate(l.followUp))+(od?" · overdue":""):""}</td>
+      <td class="n small hide-sm">${l.lastContact?daysAgo(l.lastContact):""}</td>
+    </tr>`; };
+  const dirLabels = {date:["Newest first","Oldest first"], status:["Furthest along first","Earliest stage first"], follow:["Latest first","Soonest first"]}[c.sort] || ["Z to A","A to Z"];
+  return `<div class="cal-head"><h2>Contacted</h2><span class="muted small">Who you've reached out to, by each venue's "Contacted on" date. Click a row to open the venue.</span>
+      <button class="btn" type="button" id="ct-csv" style="margin-left:auto">Download list (CSV)</button></div>
+    <div class="ct-bar">
+      <label>Dates<select class="field" id="ct-range">${Object.entries(CT_RANGES).map(([k,v])=>`<option value="${k}" ${c.range===k?"selected":""}>${v}</option>`).join("")}</select></label>
+      ${c.range==="custom"?`<label>From<input class="field" type="date" id="ct-from" value="${esc(c.from)}"></label><label>To<input class="field" type="date" id="ct-to" value="${esc(c.to)}"></label>`:""}
+      <label>Type<select class="field" id="ct-kind">${[["all","All"],["venue","Venues"],["festival","Festivals"],["private","Private events"]].map(([k,v])=>`<option value="${k}" ${c.kind===k?"selected":""}>${v}</option>`).join("")}</select></label>
+      <label>State<select class="field" id="ct-state"><option value="">All states</option>${states.map(x=>`<option value="${esc(x)}" ${c.state===x?"selected":""}>${esc(STATE_NAMES[x]||x)}</option>`).join("")}</select></label>
+      <label>Sort by<select class="field" id="ct-sort">${[["date","Date contacted"],["name","Venue name"],["place","State and city"],["status","Status"],["follow","Follow-up date"],["contact","Contact person"]].map(([k,v])=>`<option value="${k}" ${c.sort===k?"selected":""}>${v}</option>`).join("")}</select></label>
+      <label>Order<select class="field" id="ct-dir"><option value="-1" ${c.dir<0?"selected":""}>${dirLabels[0]}</option><option value="1" ${c.dir>0?"selected":""}>${dirLabels[1]}</option></select></label>
+      <label style="flex:1;min-width:180px">Search<input type="search" class="field" id="ct-q" placeholder="Venue, city, contact…" value="${esc(c.q)}"></label>
+    </div>
+    <div class="ct-sum">
+      ${sumBtn("", dated.length, c.range==="custom"?"Contacted in these dates":"Contacted · "+CT_RANGES[c.range].toLowerCase())}
+      ${STATUSES.filter(x=>counts[x]).map(x=>sumBtn(x, counts[x], x)).join("")}
+      ${overdueN?sumBtn("_overdue", overdueN, "Follow-up overdue"):""}
+    </div>
+    ${shown.length ? `<div class="tablewrap"><table class="states ct"><thead><tr>${th("date","Contacted")}${th("name","Venue")}${th("place","Where")}${th("contact","Contact","hide-sm")}${th("status","Status")}${th("follow","Follow up")}<th class="hide-sm" style="text-align:right">Days ago</th></tr></thead>
+      <tbody>${shown.map(row).join("")}</tbody></table></div>
+      <p class="muted small">${shown.length} shown. Tip: click a column heading to sort by it; click again to flip the order.</p>`
+    : `<div class="empty"><h3>Nobody contacted ${c.range==="all"?"yet":"in these dates"}</h3><p>When you set a venue's status to Contacted, today's date is filled in and it shows up here.${c.range!=="all"?" Try All time.":""}</p></div>`}
+    ${undated.length ? `<details class="panel" style="margin-top:14px"><summary><strong>Marked contacted, but no date</strong> <span class="muted small">${undated.length} · open one and fill in "Contacted on"</span></summary>
+      <div class="tablewrap" style="margin-top:8px"><table class="states ct"><tbody>${ctSort(undated).map(row).join("")}</tbody></table></div></details>` : ""}`;
+}
+function ctCsv(){
+  const {shown} = ctRows(), t = todayISO();
+  const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
+  const lines = [["Contacted on","Venue","City","State","Contact person","Email","Status","Follow up"].map(q).join(",")]
+    .concat(shown.map(l => [l.lastContact, l.name, l.city, l.stateCode, l.contactName, (l.emails||[]).join("; "), l.status||"Not contacted", l.followUp].map(q).join(",")));
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], {type:"text/csv"})); a.download = `contacted-${t}.csv`; document.body.appendChild(a); a.click(); a.remove();
+}
+
 /* ---------- Money ---------- */
 function viewMoney(){
   const t = todayISO();
@@ -1977,6 +2077,8 @@ document.addEventListener("click", e => {
   const day = t.closest("[data-day]"); if (day) { openEventForm(null, {date: day.dataset.day}); return; }
   const cal = t.closest("[data-cal]"); if (cal) { const n = +cal.dataset.cal; S.calMonth = n===0 ? null : new Date(S.calMonth.getFullYear(), S.calMonth.getMonth()+n, 1); render(); return; }
   const qrb = t.closest("[data-qr]"); if (qrb) { showQR(JOIN_URL, "Fan sign-up QR code", "Anyone who scans this can join your list. They're added to Fans, sorted by state."); return; }
+  const cts = t.closest("[data-ct-sort]"); if (cts) { const k = cts.dataset.ctSort; if (S.ct.sort===k) S.ct.dir = -S.ct.dir; else { S.ct.sort = k; S.ct.dir = ["name","place","contact","follow"].includes(k) ? 1 : -1; } saveCt(); render(); return; }
+  const ctst = t.closest("[data-ct-status]"); if (ctst) { S.ct.status = S.ct.status===ctst.dataset.ctStatus ? "" : ctst.dataset.ctStatus; saveCt(); render(); return; }
   const fst = t.closest("[data-fanstate]"); if (fst) { S.fanState = fst.dataset.fanstate; render(); return; }
   const dfan = t.closest("[data-del-fan]"); if (dfan) { if (dfan.dataset.armed) write(() => S.db.collection("fans").doc(dfan.dataset.delFan).delete(), "Removed from the list"); else { dfan.dataset.armed="1"; dfan.textContent="Tap again"; } return; }
   const tpl = t.closest("[data-tpl]"); if (tpl) { openTemplate(S.templates.find(x=>x.id===tpl.dataset.tpl)); return; }
@@ -1998,6 +2100,7 @@ document.addEventListener("click", e => {
     case "act-edit": if (l) openLeadForm(l); break;
     case "cal-add": openEventForm(null); break;
     case "tpl-add": openTemplate(null); break;
+    case "ct-csv": ctCsv(); break;
   }
 });
 document.addEventListener("keydown", e => {
@@ -2009,6 +2112,7 @@ document.addEventListener("keydown", e => {
 let qTimer;
 document.addEventListener("input", e => {
   if (e.target.id==="fan-q") { clearTimeout(qTimer); const v = e.target.value; qTimer = setTimeout(() => { S.fanQ = v; render(); const i = $("#fan-q"); i.focus(); try{i.setSelectionRange(v.length,v.length);}catch{} }, 200); return; }
+  if (e.target.id==="ct-q") { clearTimeout(qTimer); const v = e.target.value; qTimer = setTimeout(() => { S.ct.q = v; saveCt(); render(); const i = $("#ct-q"); i.focus(); try{i.setSelectionRange(v.length,v.length);}catch{} }, 200); return; }
   if (e.target.id==="note-body") { const l = S.leads.get(S.selected); if (l) { draftFor(l).noteBody = e.target.value; updateSaveBar(); } return; }
   if (e.target.id==="d-contacted") { const l = S.leads.get(S.selected); if (l) { const d = draftFor(l); d.lastContact = e.target.value; d.touched.lastContact = true; updateSaveBar(); } return; }
   if (e.target.id==="d-follow") { const l = S.leads.get(S.selected); if (l) { const d = draftFor(l); d.followUp = e.target.value; d.touched.followUp = true; updateSaveBar(); } return; }
@@ -2016,6 +2120,10 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("change", e => {
   const id = e.target.id, l = S.leads.get(S.selected);
+  if (["ct-range","ct-from","ct-to","ct-kind","ct-state","ct-sort","ct-dir"].includes(id)) {
+    const k = id.slice(3), v = e.target.value; S.ct[k] = k==="dir" ? +v : v;
+    if (k==="sort") S.ct.dir = ["name","place","contact"].includes(v) ? 1 : (v==="follow" ? 1 : -1);
+    saveCt(); render(); return; }
   if (id==="f-state") { S.f.state = e.target.value; saveFilters(); render(); }
   else if (id==="f-status") { S.f.status = e.target.value; saveFilters(); render(); }
   else if (id==="f-rating") { S.f.rating = e.target.value; saveFilters(); render(); }
@@ -2035,7 +2143,7 @@ document.addEventListener("submit", e => {
 });
 
 const h = location.hash.slice(1);
-if (["today","leads","calendar","money","fans","templates","states","tour"].includes(h)) S.view = h;
+if (["today","leads","calendar","money","fans","templates","states","tour","contacted"].includes(h)) S.view = h;
 render();
 boot();
 })();
