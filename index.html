@@ -1121,20 +1121,30 @@ async function drawTourMap(){
   if (!document.body.contains(el)) return;
   const prevView = S.tm && S.tm.plan===P && S.tm.map ? {c:S.tm.map.getCenter(), z:S.tm.map.getZoom()} : null;
   const map=L.map(el,{scrollWheelZoom:true}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18, attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
-  const hit=L.canvas({tolerance:14}); // dots are easy to click: about 14px of slack around each
+  // Venue dots and festival squares draw ABOVE the stop-letter pins, so a pin never hides a venue.
+  map.createPane("venues").style.zIndex = 640; map.createPane("fests").style.zIndex = 650;
+  const hit=L.canvas({tolerance:14, pane:"venues"}); // dots are easy to click: about 14px of slack around each
+  const placed=[]; // every dot, so dots sharing the same spot can be fanned out
   const sketch=P.pts.map(p=>[p.lat,p.lng]);
   L.polyline(sketch,{color:"#8a9590",weight:2,opacity:.6,dashArray:"2 6"}).addTo(map); // the route you sketched
   (S.tour.stops||[]).forEach(x=>{ if (x.pt) L.circle([x.pt.lat,x.pt.lng],{radius:(+S.tour.radius||50)*1609.34, color:"#444", weight:1, opacity:.5, dashArray:"4 4", fill:true, fillOpacity:.04, interactive:false}).addTo(map); });
   P.cands.forEach(c=>{ const l=c.l, r={"Great fit":9,"Good fit":7.5,"Possible":6}[l.vetVerdict]||5;
-    const m=L.circleMarker([l.lat,l.lng],{renderer:hit, radius:r, color:"#fff", weight:1.5, fillColor:rcol(l), fillOpacity:.95}).bindPopup(()=>venuePop(l)).bindTooltip(esc(l.name),{direction:"top",offset:[0,-r]}).addTo(map);
-    m.on("mouseover",()=>m.setRadius(r+3)).on("mouseout",()=>m.setRadius(r)); });
-  (P.fests||[]).forEach(c=>{ const l=c.l; L.marker([l.lat,l.lng],{icon:L.divIcon({className:"tfest",html:"<i></i>",iconSize:[36,36]}),zIndexOffset:500}).bindPopup(()=>venuePop(l)).bindTooltip(esc(l.name),{direction:"top",offset:[0,-10]}).addTo(map); });
+    const m=L.circleMarker([l.lat,l.lng],{renderer:hit, pane:"venues", radius:r, color:"#fff", weight:1.5, fillColor:rcol(l), fillOpacity:.95}).bindPopup(()=>venuePop(l)).bindTooltip(esc(l.name),{direction:"top",offset:[0,-r]}).addTo(map);
+    m.on("mouseover",()=>m.setRadius(r+3)).on("mouseout",()=>m.setRadius(r)); placed.push({m, base:L.latLng(l.lat,l.lng)}); });
+  (P.fests||[]).forEach(c=>{ const l=c.l; const m=L.marker([l.lat,l.lng],{pane:"fests",icon:L.divIcon({className:"tfest",html:"<i></i>",iconSize:[36,36]})}).bindPopup(()=>venuePop(l)).bindTooltip(esc(l.name),{direction:"top",offset:[0,-10]}).addTo(map); placed.push({m, base:L.latLng(l.lat,l.lng)}); });
+  // Places saved with the same coordinates (often just the city center) would sit exactly on top of each other.
+  // Fan them out in a small circle, measured in screen pixels so they stay apart at every zoom.
+  const fan=()=>{ const groups={}; placed.forEach(p=>{ const k=p.base.lat.toFixed(4)+","+p.base.lng.toFixed(4); (groups[k]||=[]).push(p); });
+    Object.values(groups).forEach(g=>{ if (g.length<2) { g[0].m.setLatLng(g[0].base); return; }
+      const c=map.latLngToLayerPoint(g[0].base), R=Math.max(14, g.length*5);
+      g.forEach((p,i)=>{ const a=-Math.PI/2+2*Math.PI*i/g.length; p.m.setLatLng(map.layerPointToLatLng(L.point(c.x+R*Math.cos(a), c.y+R*Math.sin(a)))); }); }); };
+  map.on("zoomend", fan);
   (S.tour.stops||[]).forEach((x,i)=>{ if (x.pt) L.marker([x.pt.lat,x.pt.lng],{icon:L.divIcon({className:"tpin turn",html:String.fromCharCode(65+i),iconSize:[22,22]}),interactive:false,opacity:.75}).addTo(map); });
   if (S.tour.endPt) L.marker([S.tour.endPt.lat,S.tour.endPt.lng],{icon:L.divIcon({className:"tpin turn",html:"⚑",iconSize:[26,26]})}).bindPopup("End: "+esc(S.tour.endPt.label||S.tour.end)).addTo(map);
   L.marker([P.pts[0].lat,P.pts[0].lng],{icon:L.divIcon({className:"tpin home",html:"★",iconSize:[26,26]})}).bindPopup("Start: "+esc(S.tour.fromPt?.label||S.tour.from)).addTo(map);
   S.tm={map, plan:P, mineLayer:L.layerGroup().addTo(map)};
   if (prevView) map.setView(prevView.c, prevView.z); else map.fitBounds(L.latLngBounds([...sketch, ...P.cands.map(c=>[c.l.lat,c.l.lng])]).pad(0.08));
-  refreshMine();
+  fan(); refreshMine();
 }
 // copy what's typed in the form into S.tour (so adding/removing a stop keeps your typing)
 function readTourForm(){
