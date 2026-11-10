@@ -1,0 +1,85 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Tim & Myles Thompson//Gigs//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Tim & Myles Thompson gigs
+X-WR-CALDESC:Where Tim & Myles are playing
+REFRESH-INTERVAL;VALUE=DURATION:PT6H
+X-PUBLISHED-TTL:PT6H
+BEGIN:VEVENT
+UID:site-2026-10-02-orlando@timandmylesthompson
+DTSTAMP:20261110T210712Z
+SUMMARY:Tim & Myles: Private event
+DTSTART;VALUE=DATE:20261002
+DTEND;VALUE=DATE:20261003
+DESCRIPTION:Status: Played
+END:VEVENT
+BEGIN:VEVENT
+UID:site-2026-10-03-storysong@timandmylesthompson
+DTSTAMP:20261110T210712Z
+SUMMARY:Tim & Myles: Story & Song Center for Arts & Culture (Fernandina Be
+ ach\, FL)
+DTSTART;VALUE=DATE:20261003
+DTEND;VALUE=DATE:20261004
+LOCATION:Story & Song Center for Arts & Culture\, Fernandina Beach\, FL
+DESCRIPTION:Status: Played
+END:VEVENT
+BEGIN:VEVENT
+UID:site-2026-10-05-bluejay@timandmylesthompson
+DTSTAMP:20261110T210712Z
+SUMMARY:Tim & Myles: Blue Jay Listening Room (Jacksonville Beach\, FL)
+DTSTART;TZID=America/New_York:20261005T200000
+DTEND;TZID=America/New_York:20261005T223000
+LOCATION:Blue Jay Listening Room\, Jacksonville Beach\, FL
+DESCRIPTION:Status: Played
+END:VEVENT
+BEGIN:VEVENT
+UID:site-2026-11-07-kentstage@timandmylesthompson
+DTSTAMP:20261110T210712Z
+SUMMARY:Tim & Myles: The Kent Stage (Woodchoppers Ball) (Kent\, OH)
+DTSTART;VALUE=DATE:20261107
+DTEND;VALUE=DATE:20261108
+LOCATION:The Kent Stage (Woodchoppers Ball)\, Kent\, OH
+DESCRIPTION:Status: Confirmed
+END:VEVENT
+BEGIN:VEVENT
+UID:site-2026-11-12-sbhouse@timandmylesthompson
+DTSTAMP:20261110T210712Z
+SUMMARY:Tim & Myles: Private event
+DTSTART;VALUE=DATE:20261112
+DTEND;VALUE=DATE:20261113
+DESCRIPTION:Status: Confirmed
+END:VEVENT
+BEGIN:VEVENT
+UID:site-2026-11-14-house@timandmylesthompson
+DTSTAMP:20261110T210712Z
+SUMMARY:Tim & Myles: Private event
+DTSTART;VALUE=DATE:20261114
+DTEND;VALUE=DATE:20261115
+DESCRIPTION:Status: Confirmed
+END:VEVENT
+BEGIN:VEVENT
+UID:site-2027-06-06-lakeside@timandmylesthompson
+DTSTAMP:20261110T210712Z
+SUMMARY:Tim & Myles: Lakeside Music House Concerts (Tuttle Creek Lake) (Ma
+ nhattan\, KS)
+DTSTART;TZID=America/Chicago:20270606T160000
+DTEND;TZID=America/Chicago:20270606T183000
+LOCATION:Lakeside Music House Concerts (Tuttle Creek Lake)\, Manhattan\, K
+ S
+DESCRIPTION:Status: Confirmed\nhttps://lakesidemusic.org/
+URL:https://lakesidemusic.org/
+END:VEVENT
+BEGIN:VEVENT
+UID:ffded457837c461a8bd9671502f14490@timandmylesthompson
+DTSTAMP:20261110T210712Z
+SUMMARY:Tim & Myles: SBAcoustic Unplugged at USSB Parish Hall (Santa Barba
+ ra\, CA)
+DTSTART;TZID=America/Los_Angeles:20280409T193000
+DTEND;TZID=America/Los_Angeles:20280409T220000
+LOCATION:SBAcoustic Unplugged at USSB Parish Hall\, Santa Barbara\, CA
+DESCRIPTION:Status: Confirmed\nhttps://www.sbacoustic.com
+URL:https://www.sbacoustic.com
+END:VEVENT
+END:VCALENDAR
