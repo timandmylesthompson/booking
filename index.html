@@ -177,7 +177,7 @@ main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px
 .copy{border:0;background:var(--sunken);border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;color:var(--muted)}
 .research{white-space:pre-wrap;font-size:14px;max-width:72ch}
 .links{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:13.5px;margin-top:8px}
-.status-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.status-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
 .status-row label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
 
 /* Timeline */
@@ -539,8 +539,9 @@ async function setStatus(lead, status){
 /* ---------- One-save draft for status, follow-up and note ---------- */
 /* Only fields the person actually changed count as unsaved; anything the app changes on its own (a gig moving status to Booked) just flows through. */
 function draftFor(l){
-  if (!S.draft || S.draft.leadId !== l.id) S.draft = {leadId:l.id, status:l.status||"Not contacted", followUp:l.followUp||"", noteBody:"", noteKind:"note", touched:{}};
+  if (!S.draft || S.draft.leadId !== l.id) S.draft = {leadId:l.id, status:l.status||"Not contacted", followUp:l.followUp||"", lastContact:l.lastContact||"", noteBody:"", noteKind:"note", touched:{}};
   const d = S.draft;
+  if (!d.touched.lastContact) d.lastContact = l.lastContact || "";
   if (!d.touched.status) d.status = l.status || "Not contacted";
   if (!d.touched.followUp) d.followUp = l.followUp || "";
   return d;
@@ -548,7 +549,7 @@ function draftFor(l){
 function isDirty(){
   const d = S.draft; if (!d) return false;
   const l = S.leads.get(d.leadId); if (!l) return false;
-  return (d.touched.status && d.status !== (l.status||"Not contacted")) || (d.touched.followUp && d.followUp !== (l.followUp||"")) || !!d.noteBody.trim();
+  return (d.touched.status && d.status !== (l.status||"Not contacted")) || (d.touched.followUp && d.followUp !== (l.followUp||"")) || (d.touched.lastContact && d.lastContact !== (l.lastContact||"")) || !!d.noteBody.trim();
 }
 function updateSaveBar(){
   const bar = $("#savebar"); if (!bar) return;
@@ -556,6 +557,7 @@ function updateSaveBar(){
   bar.hidden = !isDirty();
   $("#d-status")?.classList.toggle("dirty-field", !!(l && d && d.touched.status && d.status !== (l.status||"Not contacted")));
   $("#d-follow")?.classList.toggle("dirty-field", !!(l && d && d.touched.followUp && d.followUp !== (l.followUp||"")));
+  $("#d-contacted")?.classList.toggle("dirty-field", !!(l && d && d.touched.lastContact && d.lastContact !== (l.lastContact||"")));
 }
 function blockIfDirty(){
   if (!isDirty()) return false;
@@ -575,7 +577,9 @@ async function saveAll(){
   const upd = {};
   if (status !== oldStatus) upd.status = status;
   if (followUp !== (l.followUp||null)) upd.followUp = followUp;
-  if (note && contactKind) upd.lastContact = todayISO();
+  if (d.touched.lastContact) { if ((d.lastContact||null) !== (l.lastContact||null)) upd.lastContact = d.lastContact || null; }
+  else if (note && contactKind) upd.lastContact = todayISO();
+  else if (upd.status && oldStatus==="Not contacted" && !l.lastContact) upd.lastContact = todayISO();
   let ok = true;
   if (Object.keys(upd).length) { upd.updatedAt = new Date().toISOString(); ok = await write(() => leadRef(l.id).update(upd)); }
   if (ok && note) ok = await write(() => logActivity(l.id, d.noteKind, note));
@@ -749,6 +753,7 @@ function renderDetail(){
       <h3>Booking status</h3>
       <div class="status-row">
         <label>Status<select class="field" id="d-status">${STATUSES.map(s=>`<option ${s===st?"selected":""}>${s}</option>`).join("")}</select></label>
+        <label>Contacted on<input class="field" type="date" id="d-contacted" value="${esc(d.lastContact)}"></label>
         <label>Follow up on<input class="field" type="date" id="d-follow" value="${esc(d.followUp)}"></label>
       </div>
       ${evs.length?`<div style="margin-top:12px;display:flex;flex-direction:column;gap:4px">${evs.map(e=>`<button type="button" class="ev ${evClass(e)} k-${esc(e.kind||k)}" data-event="${esc(e.id)}">${fmtRange(e)} · ${esc(e.status||"Hold")}${e.fee?" · $"+esc(e.fee):""}</button>`).join("")}</div>`:""}
@@ -2005,6 +2010,7 @@ let qTimer;
 document.addEventListener("input", e => {
   if (e.target.id==="fan-q") { clearTimeout(qTimer); const v = e.target.value; qTimer = setTimeout(() => { S.fanQ = v; render(); const i = $("#fan-q"); i.focus(); try{i.setSelectionRange(v.length,v.length);}catch{} }, 200); return; }
   if (e.target.id==="note-body") { const l = S.leads.get(S.selected); if (l) { draftFor(l).noteBody = e.target.value; updateSaveBar(); } return; }
+  if (e.target.id==="d-contacted") { const l = S.leads.get(S.selected); if (l) { const d = draftFor(l); d.lastContact = e.target.value; d.touched.lastContact = true; updateSaveBar(); } return; }
   if (e.target.id==="d-follow") { const l = S.leads.get(S.selected); if (l) { const d = draftFor(l); d.followUp = e.target.value; d.touched.followUp = true; updateSaveBar(); } return; }
   if (e.target.id==="f-q") { clearTimeout(qTimer); const v = e.target.value; qTimer = setTimeout(() => { S.f.q = v; saveFilters(); const pos = e.target.selectionStart; render(); const i = $("#f-q"); i.focus(); try{i.setSelectionRange(pos,pos);}catch{} }, 180); }
 });
@@ -2016,7 +2022,10 @@ document.addEventListener("change", e => {
   else if (id==="f-cat") { S.f.cat = e.target.value; saveFilters(); render(); }
   else if (id==="f-prio") { S.f.prio = e.target.value; saveFilters(); render(); }
   else if (id==="f-email") { S.f.email = e.target.checked; saveFilters(); render(); }
-  else if (id==="d-status" && l) { const d = draftFor(l); d.status = e.target.value; d.touched.status = true; updateSaveBar(); }
+  else if (id==="d-status" && l) { const d = draftFor(l); d.status = e.target.value; d.touched.status = true;
+    if (d.status!=="Not contacted" && !d.lastContact) { d.lastContact = todayISO(); d.touched.lastContact = true; const c=$("#d-contacted"); if (c) c.value = d.lastContact; }
+    updateSaveBar(); }
+  else if (id==="d-contacted" && l) { const d = draftFor(l); d.lastContact = e.target.value; d.touched.lastContact = true; updateSaveBar(); }
   else if (id==="d-follow" && l) { const d = draftFor(l); d.followUp = e.target.value; d.touched.followUp = true; updateSaveBar(); }
   else if (id==="note-kind" && l) { draftFor(l).noteKind = e.target.value; updateSaveBar(); }
 });
