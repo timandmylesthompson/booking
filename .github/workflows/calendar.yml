@@ -1,0 +1,23 @@
+name: Update family calendar feed
+on:
+  schedule:
+    - cron: "17 * * * *"   # every hour
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/make_ics.py
+      - name: Commit if changed
+        run: |
+          # ignore the DTSTAMP line when deciding whether anything really changed
+          if git diff --quiet -I'^DTSTAMP' -- calendar.ics 2>/dev/null && git ls-files --error-unmatch calendar.ics >/dev/null 2>&1; then
+            echo "No gig changes"; exit 0; fi
+          git config user.name "calendar-bot"
+          git config user.email "calendar-bot@users.noreply.github.com"
+          git add calendar.ics
+          git commit -m "Update family calendar feed"
+          git push
