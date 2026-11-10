@@ -334,7 +334,7 @@ table.states tr:hover td{background:var(--sunken)}
 .tour-mapcol{display:flex;flex-direction:column;gap:6px;position:sticky;top:70px}@media (max-width:860px){.tour-mapcol{position:static}}.tour-side{display:flex;flex-direction:column;gap:12px;min-width:0}
 .tlegend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted,#666)}.tlegend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}.tlegend i.sq{border-radius:2px}
 .tshow{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:4px 0 8px}.tshow label{display:inline-flex;gap:6px;align-items:center}.tshow i.dot{display:inline-block;width:10px;height:10px;border-radius:50%}.tshow i.dot.sq{border-radius:2px}
-.tfest{background:#e8660c;border:2px solid #fff;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.tfest{background:transparent;border:0;display:flex;align-items:center;justify-content:center;cursor:pointer}.tfest i{width:16px;height:16px;background:#e8660c;border:2px solid #fff;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.4);box-sizing:border-box;transition:transform .1s}.tfest:hover i{transform:scale(1.3)}
 .tsugg summary,.tall summary{cursor:pointer}.tpop{min-width:180px;line-height:1.45}.tpop-btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 #city-ac{position:absolute;z-index:3000;display:none;max-height:340px;overflow-y:auto;color:var(--ink);background:var(--surface);border:1px solid var(--line,#ccc);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
 .ac-head{padding:6px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
@@ -1089,12 +1089,14 @@ async function drawTourMap(){
   if (!document.body.contains(el)) return;
   const prevView = S.tm && S.tm.plan===P && S.tm.map ? {c:S.tm.map.getCenter(), z:S.tm.map.getZoom()} : null;
   const map=L.map(el,{scrollWheelZoom:true}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18, attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
+  const hit=L.canvas({tolerance:14}); // dots are easy to click: about 14px of slack around each
   const sketch=P.pts.map(p=>[p.lat,p.lng]);
   L.polyline(sketch,{color:"#8a9590",weight:2,opacity:.6,dashArray:"2 6"}).addTo(map); // the route you sketched
   (S.tour.stops||[]).forEach(x=>{ if (x.pt) L.circle([x.pt.lat,x.pt.lng],{radius:(+S.tour.radius||50)*1609.34, color:"#444", weight:1, opacity:.5, dashArray:"4 4", fill:true, fillOpacity:.04, interactive:false}).addTo(map); });
   P.cands.forEach(c=>{ const l=c.l, r={"Great fit":9,"Good fit":7.5,"Possible":6}[l.vetVerdict]||5;
-    L.circleMarker([l.lat,l.lng],{radius:r, color:"#fff", weight:1.5, fillColor:rcol(l), fillOpacity:.95}).bindPopup(()=>venuePop(l)).addTo(map); });
-  (P.fests||[]).forEach(c=>{ const l=c.l; L.marker([l.lat,l.lng],{icon:L.divIcon({className:"tfest",html:"",iconSize:[16,16]}),zIndexOffset:500,title:l.name}).bindPopup(()=>venuePop(l)).addTo(map); });
+    const m=L.circleMarker([l.lat,l.lng],{renderer:hit, radius:r, color:"#fff", weight:1.5, fillColor:rcol(l), fillOpacity:.95}).bindPopup(()=>venuePop(l)).bindTooltip(esc(l.name),{direction:"top",offset:[0,-r]}).addTo(map);
+    m.on("mouseover",()=>m.setRadius(r+3)).on("mouseout",()=>m.setRadius(r)); });
+  (P.fests||[]).forEach(c=>{ const l=c.l; L.marker([l.lat,l.lng],{icon:L.divIcon({className:"tfest",html:"<i></i>",iconSize:[36,36]}),zIndexOffset:500}).bindPopup(()=>venuePop(l)).bindTooltip(esc(l.name),{direction:"top",offset:[0,-10]}).addTo(map); });
   (S.tour.stops||[]).forEach((x,i)=>{ if (x.pt) L.marker([x.pt.lat,x.pt.lng],{icon:L.divIcon({className:"tpin turn",html:String.fromCharCode(65+i),iconSize:[22,22]}),interactive:false,opacity:.75}).addTo(map); });
   if (S.tour.endPt) L.marker([S.tour.endPt.lat,S.tour.endPt.lng],{icon:L.divIcon({className:"tpin turn",html:"⚑",iconSize:[26,26]})}).bindPopup("End: "+esc(S.tour.endPt.label||S.tour.end)).addTo(map);
   L.marker([P.pts[0].lat,P.pts[0].lng],{icon:L.divIcon({className:"tpin home",html:"★",iconSize:[26,26]})}).bindPopup("Start: "+esc(S.tour.fromPt?.label||S.tour.from)).addTo(map);
