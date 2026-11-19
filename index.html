@@ -288,7 +288,12 @@ details.grp > *:not(summary){margin-top:8px}
 .day:hover .addday{opacity:1;background:var(--sunken)}
 @media (hover:none){.addday{opacity:.7}}
 .ev{display:block;font-size:12px;line-height:1.25;padding:2px 5px;border-radius:4px;background:var(--k);color:var(--surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1.5px solid var(--k);text-align:left;cursor:pointer;width:100%}
-.ev.hold{background:var(--ks);color:var(--k);border-style:dashed}
+.ev.hold{background:var(--ks);color:var(--k);border-style:dashed;animation:holdflash 1.1s ease-in-out infinite}
+@keyframes holdflash{0%,100%{background:var(--ks);color:var(--k);border-color:var(--k)}50%{background:var(--warn);color:#fff;border-color:var(--warn)}}
+.holdtag{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 7px;border-radius:4px;border:1.5px solid var(--warn);color:var(--warn);background:transparent;white-space:nowrap;animation:holdtag 1.1s ease-in-out infinite}
+@keyframes holdtag{50%{background:var(--warn);color:#fff}}
+.dchip.hold{animation:holdtag 1.1s ease-in-out infinite;color:var(--warn);background:transparent;box-shadow:inset 0 0 0 1.5px var(--warn)}
+.swatch.hold{animation:holdtag 1.1s ease-in-out infinite}
 .ev.cancel{text-decoration:line-through;opacity:.6}
 .ev.deadline{background:transparent;color:var(--k);border:1px solid var(--k);font-weight:600}
 .upcoming{margin-top:18px}
@@ -485,10 +490,14 @@ function nextDate(l){
   const t = todayISO();
   return S.events.filter(e => e.leadId===l.id && isGig(e) && e.date >= t && e.status!=="Cancelled").sort((a,b)=>a.date.localeCompare(b.date))[0] || null;
 }
+/* Gigs on hold for a lead: these flash until confirmed or cancelled. */
+const holdsFor = l => S.events.filter(e => e.leadId===l.id && isGig(e) && (e.status||"Hold")==="Hold");
+const HOLDTAG = `<span class="holdtag" title="Gig on hold. Confirm with them.">Hold</span>`;
+const holdTagFor = e => isGig(e) && (e.status||"Hold")==="Hold" ? HOLDTAG : "";
 /* One short date label for a lead: festival dates, or the next date on your calendar. */
 function dateLabel(l){
   const nd = nextDate(l);
-  if (nd) return {html:`<span class="dchip">${esc(fmtDate(nd.date))} · ${esc(nd.status||"Hold")}</span>`, text:fmtDate(nd.date)};
+  if (nd) return {html:`<span class="dchip${(nd.status||"Hold")==="Hold"?" hold":""}">${esc(fmtDate(nd.date))} · ${esc(nd.status||"Hold")}</span>`, text:fmtDate(nd.date)};
   if (kindOf(l)==="festival") {
     const d = festDates(l);
     if (!d) return {html:`<span class="dchip off">Dates TBA</span>`, text:"Dates TBA"};
@@ -696,7 +705,7 @@ function viewToday(){
       : `<p class="empty small">Nothing due. When you log an email, a follow-up date is set 10 days out.</p>`}
     </section>
     <section class="panel"><h2>Next 60 days <small>${soon.length} dates</small></h2>
-      ${soon.length ? `<ul class="plist">${soon.map(e=>{ const l=S.leads.get(e.leadId); return `<li class="${calK(e)}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title|| l?.name || "Date")}</div><div class="sub">${isGig(e)?esc(e.status||"Hold"):esc(DATE_KINDS[e.kind])}${l? " · "+esc(place(l)):""}${e.fee? " · $"+esc(e.fee):""}</div></div><span class="mono small">${fmtRange(e)}</span></li>`;}).join("")}</ul>`
+      ${soon.length ? `<ul class="plist">${soon.map(e=>{ const l=S.leads.get(e.leadId); return `<li class="${calK(e)}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title|| l?.name || "Date")}</div><div class="sub">${isGig(e)?esc(e.status||"Hold"):esc(DATE_KINDS[e.kind])}${l? " · "+esc(place(l)):""}${e.fee? " · $"+esc(e.fee):""}</div></div><span style="display:flex;gap:6px;align-items:center">${holdTagFor(e)}<span class="mono small">${fmtRange(e)}</span></span></li>`;}).join("")}</ul>`
       : `<p class="empty small">No dates yet. Add holds and confirmed shows from the Calendar or from any lead.</p>`}
     </section>
     <section class="panel"><h2>Start here <small>top unreached leads with email</small></h2>
@@ -739,7 +748,7 @@ function viewLeads(){
     const st = l.status||"Not contacted";
     rows += `<div class="row k-${kindOf(l)}" role="option" tabindex="0" data-open="${esc(l.id)}" aria-selected="${l.id===S.selected}"><span class="bar"></span>
       <div style="min-width:0"><div class="nm">${esc(l.name)}</div><div class="sub">${(()=>{const d=dateLabel(l);return d?d.html+" ":""})()}${esc(l.city||"")}${l.seats? ` · <span class="mono">${l.seats}</span> seats`:""}${!(l.emails||[]).length? " · no email":""}</div></div>
-      <div class="right">${l.isNew?`<span class="pill v-show">New</span>`:""}${ratingPill(l)}${st!=="Not contacted"?`<span class="s-pill ${statusCls(st)}">${esc(st)}</span>`:""}</div></div>`;
+      <div class="right">${holdsFor(l).length?HOLDTAG:""}${l.isNew?`<span class="pill v-show">New</span>`:""}${ratingPill(l)}${st!=="Not contacted"?`<span class="s-pill ${statusCls(st)}">${esc(st)}</span>`:""}</div></div>`;
   }
   const kt = (k,label) => `<button type="button" class="${k==="all"?"":"k-"+k}" data-kind="${k}" aria-pressed="${S.f.kind===k}">${k!=="all"?`<span class="kdot"></span>`:""}${label} <span class="n">${kc(k)}</span></button>`;
   return `<div class="leads">
@@ -777,7 +786,7 @@ function renderDetail(){
   box.className = `detail k-${k}`;
   box.innerHTML = `
   <div class="d-head">
-    <div class="d-meta"><span class="kchip"><span class="kdot"></span>${KINDS[k]}</span>
+    <div class="d-meta"><span class="kchip"><span class="kdot"></span>${KINDS[k]}</span>${holdsFor(l).length?HOLDTAG:""}
       ${l.isNew?`<span class="pill v-show" title="${esc(l.origin||"")}">New</span>`:""}${ratingPill(l)}${l.fitType?`<span class="pill">${esc(l.fitType)}</span>`:""}${l.playedBefore?`<span class="pill">Played here</span>`:""}${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
       ${l.priorityLabel && !/^(STRONG|CONDITIONAL|HOLD|HIGH PRIORITY)$/.test(l.priorityLabel)?`<span class="small muted">${esc(l.priorityLabel.toLowerCase())}</span>`:""}</div>
     <h2>${esc(l.name)}</h2>
@@ -882,7 +891,7 @@ function viewCalendar(){
   [...S.leads.values()].filter(l=>l.kind==="festival" && l.deadline).forEach(l => (byDate[l.deadline] ||= []).push({deadline:true, leadId:l.id, title:"Deadline: "+l.name, kind:"festival"}));
   for (let i=0;i<42;i++){
     const d = new Date(start); d.setDate(start.getDate()+i); const ds = iso(d);
-    if (i>=35 && d.getMonth()!==m.getMonth()) break;
+    if (i===35 && d.getMonth()!==m.getMonth()) break;
     const evs = (byDate[ds]||[]).sort((a,b)=>String(a.time||"").localeCompare(String(b.time||"")));
     cells.push(`<div class="day ${d.getMonth()!==m.getMonth()?"out":""} ${ds===t?"is-today":""}" data-day="${ds}"><div class="dayhead"><span class="dn">${d.getDate()}</span><button type="button" class="addday" data-day="${ds}" aria-label="Add a gig on ${ds}">+</button></div>
       ${evs.map(e => e.deadline ? `<button type="button" class="ev deadline k-festival" data-open="${esc(e.leadId)}">${esc(e.title)}</button>`
@@ -896,11 +905,11 @@ function viewCalendar(){
       <button class="btn ghost" type="button" data-cal="0">Today</button>
       <button class="btn" type="button" data-copy="https://timandmylesthompson.github.io/booking/calendar.html" title="A read-only page of confirmed gigs for family. Holds, fees and contacts are never shown.">Copy family calendar link</button>
       <button class="btn primary" type="button" id="cal-add">+ Add gig or date</button>
-      <div class="legend"><span class="k-gig"><span class="swatch"></span>Gig (and gig travel)</span><span class="k-gig"><span class="swatch hold" style="border-color:var(--gig)"></span>Gig on hold (dashed)</span><span class="k-other"><span class="swatch"></span>Other: don't book</span></div>
+      <div class="legend"><span class="k-gig"><span class="swatch"></span>Gig (and gig travel)</span><span class="k-gig"><span class="swatch hold" style="border-color:var(--gig)"></span>Gig on hold (flashing: confirm it)</span><span class="k-other"><span class="swatch"></span>Other: don't book</span></div>
     </div>
     <div class="calwrap"><div class="cal">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>`<div class="dow">${d}</div>`).join("")}${cells.join("")}</div></div>
     <section class="panel upcoming"><h2>Upcoming <small>${upcoming.length} dates</small></h2>
-      ${upcoming.length?`<ul class="plist">${upcoming.map(e=>{const l=S.leads.get(e.leadId);return `<li class="${calK(e)}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title||l?.name||"Date")}</div><div class="sub">${isGig(e)?esc(e.status||"Hold"):esc(DATE_KINDS[e.kind])}${l?" · "+esc(place(l)):""}</div></div><span class="mono small">${fmtRange(e)}${e.time?" · "+esc(fmtTime(e.time)):""}</span></li>`}).join("")}</ul>`:`<p class="empty small">Tap any day to add a gig. A day can hold as many gigs as you need; tap it again to add another.</p>`}
+      ${upcoming.length?`<ul class="plist">${upcoming.map(e=>{const l=S.leads.get(e.leadId);return `<li class="${calK(e)}" data-event="${esc(e.id)}"><span class="bar"></span><div><div class="nm">${esc(e.title||l?.name||"Date")}</div><div class="sub">${isGig(e)?esc(e.status||"Hold"):esc(DATE_KINDS[e.kind])}${l?" · "+esc(place(l)):""}</div></div><span style="display:flex;gap:6px;align-items:center">${holdTagFor(e)}<span class="mono small">${fmtRange(e)}${e.time?" · "+esc(fmtTime(e.time)):""}</span></span></li>`}).join("")}</ul>`:`<p class="empty small">Tap any day to add a gig. A day can hold as many gigs as you need; tap it again to add another.</p>`}
     </section>`;
 }
 const fmtTime = t => { const [h,mm] = t.split(":").map(Number); return `${((h+11)%12)+1}${mm?":"+String(mm).padStart(2,"0"):""}${h<12?"a":"p"}`; };
