@@ -643,10 +643,10 @@ async function saveAll(){
 }
 
 /* ---------- Back button history ---------- */
-function snapshotNav(){ return {view:S.view, selected:S.selected, detail:document.body.classList.contains("show-detail")}; }
+function snapshotNav(){ return {view:S.view, selected:S.selected, detail:document.body.classList.contains("show-detail"), y:window.scrollY||0}; }
 function pushHist(){
   const s = snapshotNav(), top = S.hist[S.hist.length-1];
-  if (!top || top.view!==s.view || top.selected!==s.selected || top.detail!==s.detail) S.hist.push(s);
+  if (!top || top.view!==s.view || top.selected!==s.selected || top.detail!==s.detail) S.hist.push(s); else top.y = s.y;
   if (S.hist.length > 60) S.hist.shift();
 }
 function goBack(){
@@ -657,7 +657,9 @@ function goBack(){
   S.view = s.view; S.selected = s.selected;
   document.body.classList.toggle("show-detail", s.detail);
   if (location.hash !== "#"+s.view) history.replaceState(null,"","#"+s.view);
-  render(); window.scrollTo(0,0);
+  render();
+  // go back to the same spot on the page (e.g. down at the tour map), not the top
+  const y = s.y||0; window.scrollTo(0,y); requestAnimationFrame(()=>window.scrollTo(0,y)); setTimeout(()=>window.scrollTo(0,y), 250);
 }
 
 /* ---------- Routing ---------- */
@@ -784,7 +786,9 @@ function renderDetail(){
   const k = kindOf(l), d = draftFor(l), st = d.status;
   const evs = S.events.filter(e => e.leadId===l.id).sort((a,b)=>a.date.localeCompare(b.date));
   box.className = `detail k-${k}`;
+  const fromMap = (S.hist[S.hist.length-1]||{}).view==="tour";
   box.innerHTML = `
+  ${fromMap?`<button class="btn primary" type="button" id="btn-back-map" style="margin-bottom:10px">← Back to the tour map</button>`:""}
   <div class="d-head">
     <div class="d-meta"><span class="kchip"><span class="kdot"></span>${KINDS[k]}</span>${holdsFor(l).length?HOLDTAG:""}
       ${l.isNew?`<span class="pill v-show" title="${esc(l.origin||"")}">New</span>`:""}${ratingPill(l)}${l.fitType?`<span class="pill">${esc(l.fitType)}</span>`:""}${l.playedBefore?`<span class="pill">Played here</span>`:""}${l.priority==="High"?`<span class="pill">High priority</span>`:l.priority==="Low"?`<span class="pill" style="opacity:.7">Low priority</span>`:""}
@@ -2160,7 +2164,7 @@ document.addEventListener("click", e => {
     case "btn-new": case "btn-new2": openLeadForm(null); break;
     case "btn-prefs": openPrefs(); break;
     case "btn-export": openExport(); break;
-    case "btn-back": goBack(); break;
+    case "btn-back": case "btn-back-map": goBack(); break;
     case "save-all": saveAll(); break;
     case "discard": S.draft = null; render(); toast("Changes discarded"); break;
     case "f-clearq": e.preventDefault(); S.f.q=""; saveFilters(); render(); break;
