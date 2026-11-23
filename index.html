@@ -964,7 +964,20 @@ function editDist(a,b){ const m=a.length,n=b.length, d=Array.from({length:m+1},(
 function parsePlace(q){ const parts=q.split(",").map(x=>x.trim()).filter(Boolean); const city=parts[0]||q, st=(parts[1]||"").replace(/\./g,"").trim();
   const code = STATE_NAMES[st.toUpperCase()] ? st.toUpperCase() : Object.keys(STATE_NAMES).find(k=>STATE_NAMES[k].toLowerCase()===st.toLowerCase()) || "";
   return {city, code}; }
+// A whole state as a stop: "Arkansas" or "AR" typed alone (no city). Its point is the middle of the state's towns,
+// and every venue in the state counts as near that stop.
+function stateOf(q){ const s=String(q||"").replace(/\(.*?\)/g,"").replace(/\./g,"").replace(/\s+/g," ").trim(); if (!s || s.includes(",")) return "";
+  if (s.length===2 && STATE_NAMES[s.toUpperCase()]) return s.toUpperCase();
+  return Object.keys(STATE_NAMES).find(k=>STATE_NAMES[k].toLowerCase()===s.toLowerCase())||""; }
+async function statePoint(code){
+  let pts=(await loadCities()).filter(c=>c[1]===code).map(c=>({lat:c[2],lng:c[3]}));
+  if (!pts.length) pts=[...S.leads.values()].filter(l=>l.stateCode===code && l.lat!=null);
+  if (!pts.length) return null;
+  const lat=pts.reduce((a,p)=>a+p.lat,0)/pts.length, lng=pts.reduce((a,p)=>a+p.lng,0)/pts.length;
+  return {lat:+lat.toFixed(4), lng:+lng.toFixed(4), label:STATE_NAMES[code], state:code};
+}
 async function geocode(q){
+  const sc=stateOf(q); if (sc) return statePoint(sc);
   const key="tm-geo3:"+q.toLowerCase().trim(); try { const c=JSON.parse(localStorage.getItem(key)||"null"); if (c) return c; } catch {}
   const keep = pt => { try { localStorage.setItem(key, JSON.stringify(pt)); } catch {} return pt; };
   const {city, code} = parsePlace(q), want = normCity(city), stateName = STATE_NAMES[code]||"";
@@ -997,21 +1010,22 @@ function alongRoute(pts, P){
 function legOfS(cum, s){ let i=0; while (i<cum.length-2 && s>cum[i+1]) i++; return i; }
 function planTour(fixed={}){
   const T=S.tour, pts=routePts(), maxRank=RANK[T.min]??1, n=Math.max(1,Math.min(20,+T.gigs||5)), corr=+T.corridor||75, rad=+T.radius||50;
-  const stopPts=(T.stops||[]).map(x=>x.pt).filter(Boolean);
+  const stopPts=(T.stops||[]).map(x=>x.pt).filter(p=>p && !p.state); // city stops: a circle around each
+  const stopStates=new Set((T.stops||[]).map(x=>x.pt?.state).filter(Boolean)); // state stops: the whole state
   const cum=[0]; for (let i=0;i<pts.length-1;i++) cum.push(cum[i]+miles(pts[i],pts[i+1])); const Ltot=cum[cum.length-1]||1;
   const home=pts[0], endPt=pts[pts.length-1];
   const cands=[...S.leads.values()].filter(l => kindOf(l)==="venue" && l.lat!=null && (RANK[l.vetVerdict]??9)<=maxRank && l.vetVerdict!=="Closed" && !["Declined","Do not contact"].includes(l.status)
     && T.showVenues!==false && l.fitType!=="Nashville residency" && !(T.skip||[]).includes(l.id) && (T.includePlayed || !l.playedBefore))
-    .map(l => ({l, ...alongRoute(pts,l), near: Math.min(Infinity, ...stopPts.map(p=>miles(p,l)))})).filter(c => c.d<=corr || c.near<=rad); // the strip along the route, plus a circle around every stop
+    .map(l => ({l, ...alongRoute(pts,l), near: Math.min(Infinity, ...stopPts.map(p=>miles(p,l)))})).filter(c => c.d<=corr || c.near<=rad || stopStates.has(c.l.stateCode)); // the strip along the route, a circle around every town stop, and all of every state stop
   // "Play here" stops get their own gig; the rest are spread evenly along the whole route
   const plays=(T.stops||[]).map((x,i)=>({x,i})).filter(o=>o.x.play).slice(0,n);
   const m=n-plays.length, targets=[];
-  plays.forEach(o=>targets.push({kind:"play", s:cum[o.i+1], at:pts[o.i+1], label:o.x.pt?.label||o.x.q}));
+  plays.forEach(o=>targets.push({kind:"play", s:cum[o.i+1], at:pts[o.i+1], label:o.x.pt?.label||o.x.q, state:o.x.pt?.state||""}));
   for (let i=1;i<=m;i++) targets.push({kind:"free", s:Ltot*i/(m+1)});
   targets.sort((a,b)=>a.s-b.s); targets.forEach((tg,i)=>{ tg.ti=i; tg.leg=legOfS(cum,tg.s); });
   const nearHome = l => miles(home,l)<60 || miles(endPt,l)<60;
   const score=(c,tg)=> Math.min(RANK[c.l.vetVerdict]??4,4)*1.5 + (c.l.priority==="High"?-0.5:c.l.priority==="Low"?0.5:0) + c.d/100
-    + (tg.kind==="play" ? miles(tg.at,c.l)/rad + (miles(tg.at,c.l)>rad?6:0) : Math.abs(c.s-tg.s)/75 + (nearHome(c.l)?4:0));
+    + (tg.kind==="play" ? (tg.state ? (c.l.stateCode===tg.state ? miles(tg.at,c.l)/250 : 6+miles(tg.at,c.l)/rad) : miles(tg.at,c.l)/rad + (miles(tg.at,c.l)>rad?6:0)) : Math.abs(c.s-tg.s)/75 + (nearHome(c.l)?4:0));
   const used=new Set();
   targets.forEach(tg => { const c = fixed[tg.ti] && cands.find(c=>c.l.id===fixed[tg.ti]); if (c) { tg.fixedPick=c; used.add(c.l.id); } });
   // fill "play here" towns first so they get the room in that town
@@ -1023,7 +1037,7 @@ function planTour(fixed={}){
     tg.pick=ranked[0]; if (tg.pick) used.add(tg.pick.l.id); tg.alts=ranked.slice(1,7); });
   const slots=targets.sort((a,b)=>(a.pick?a.pick.s:a.s)-(b.pick?b.pick.s:b.s));
   const fests = T.showFests===false ? [] : [...S.leads.values()].filter(l => kindOf(l)==="festival" && l.lat!=null && !["Closed","Poor fit"].includes(l.vetVerdict) && !["Declined","Do not contact"].includes(l.status))
-    .map(l => ({l, ...alongRoute(pts,l), near: Math.min(Infinity, ...stopPts.map(p=>miles(p,l)))})).filter(c => c.d<=corr || c.near<=rad);
+    .map(l => ({l, ...alongRoute(pts,l), near: Math.min(Infinity, ...stopPts.map(p=>miles(p,l)))})).filter(c => c.d<=corr || c.near<=rad || stopStates.has(c.l.stateCode));
   return {pts, cum, L:Ltot, cands, fests, slots};
 }
 function tourReplan(){ const P=S.tour.plan; if (!P) return render(); const fixed={}; P.slots.forEach(s=>{ if (s.pick) fixed[s.ti]=s.pick.l.id; }); S.tour.plan=planTour(fixed); render(); }
@@ -1040,8 +1054,8 @@ function viewTour(){
   const T=S.tour, P=T.plan, stops=T.stops||[];
   const stopRows = stops.map((x,i)=>`<div class="tstop-row">
       <span class="tletter">${String.fromCharCode(65+i)}</span>
-      <input class="field" id="tr-stop-${i}" value="${esc(x.q||"")}" placeholder="Start typing a city" aria-label="Stop ${i+1}" autocomplete="off" aria-autocomplete="list">
-      <label class="small" title="Book one gig somewhere in this area (within the miles-around-each-stop you set), not just drive through"><input type="checkbox" id="tr-play-${i}" ${x.play?"checked":""} style="width:auto"> Gig in this area</label>
+      <input class="field" id="tr-stop-${i}" value="${esc(x.q||"")}" placeholder="Start typing a city or a state" aria-label="Stop ${i+1}" autocomplete="off" aria-autocomplete="list">
+      <label class="small" title="Book one gig somewhere in this area (within the miles-around-each-stop you set, or anywhere in the state for a state stop), not just drive through"><input type="checkbox" id="tr-play-${i}" ${x.play?"checked":""} style="width:auto"> Gig in this area</label>
       ${i>0?`<button type="button" class="btn sm" data-stop-up="${i}" title="Move up" aria-label="Move stop up">↑</button>`:""}
       <button type="button" class="btn sm" data-stop-del="${i}" title="Remove this stop" aria-label="Remove stop">✕</button>
     </div>`).join("");
@@ -1049,7 +1063,7 @@ function viewTour(){
     <h2>Plan a tour <small>sketch the areas you want to pass through, then click venues on the map to build your tour</small></h2>
     <div class="troute">
       <label>Start<input class="field" id="tr-from" value="${esc(T.from)}" placeholder="Start typing a city" autocomplete="off" aria-autocomplete="list"></label>
-      <div class="tstops-edit"><div class="small muted" style="margin-bottom:4px">Areas to pass through, in order. Each town is just the middle of an area; venues all around it count.</div>${stopRows||`<p class="small muted" style="margin:0 0 6px">No stops yet. Add the towns you want the route to pass through.</p>`}
+      <div class="tstops-edit"><div class="small muted" style="margin-bottom:4px">Areas to pass through, in order. Each town is just the middle of an area; venues all around it count. Type a state, like Arkansas, to cover the whole state.</div>${stopRows||`<p class="small muted" style="margin:0 0 6px">No stops yet. Add the towns or states you want the route to pass through.</p>`}
         <button type="button" class="btn sm" id="tr-addstop">+ Add a stop</button></div>
       <label>End<input class="field" id="tr-end" value="${esc(T.end||"")}" placeholder="Back to the start (or type a city)" autocomplete="off" aria-autocomplete="list"></label>
     </div>
@@ -1089,7 +1103,7 @@ function viewTour(){
     <div class="tour-out">
       <div class="tour-mapcol">
         <div id="tour-map" class="tour-map" role="application" aria-label="Map of venues in your areas. Click a venue to add it to your tour."></div>
-        <div class="tlegend small"><b>Venues:</b><span><i style="background:${RCOL["Great fit"]}"></i>Great</span><span><i style="background:${RCOL["Good fit"]}"></i>Good</span><span><i style="background:${RCOL["Possible"]}"></i>Possible</span><span><i style="background:${RCOL.other}"></i>Other</span><span><b>Festivals:</b> <i class="sq" style="background:${FCOL}"></i>orange squares (${P.fests.length})</span><span>Dashed circles are your stop areas.</span></div>
+        <div class="tlegend small"><b>Venues:</b><span><i style="background:${RCOL["Great fit"]}"></i>Great</span><span><i style="background:${RCOL["Good fit"]}"></i>Good</span><span><i style="background:${RCOL["Possible"]}"></i>Possible</span><span><i style="background:${RCOL.other}"></i>Other</span><span><b>Festivals:</b> <i class="sq" style="background:${FCOL}"></i>orange squares (${P.fests.length})</span><span>Dashed circles are your stop areas${stops.some(x=>x.pt?.state)?"; a state stop covers the whole state":""}.</span></div>
       </div>
       <div class="tour-side">
         <section class="panel" id="tour-mine">${mineHtml()}</section>
@@ -1102,7 +1116,7 @@ function viewTour(){
           <ol class="tall-list">${[...P.fests].sort((a,b)=>a.s-b.s).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${esc(l.eventDates||"dates unknown")}${l.playedBefore?" · played before":""}</span> ${mineSet.has(l.id)?'<span class="pill">In your tour</span>':`<button type="button" class="linkish small" data-mine-add="${esc(l.id)}">Add to tour</button>`}</li>`}).join("")}</ol>
         </details>`:""}
         ${T.showVenues===false?"":`        <details class="panel tall"><summary><b>All ${P.cands.length} venues in range</b></summary>
-          <p class="small muted">Every venue within ${T.radius||50} miles of a stop or ${T.corridor} miles of the route between stops, at your chosen rating, in order along the route.</p>
+          <p class="small muted">Every venue within ${T.radius||50} miles of a stop${stops.some(x=>x.pt?.state)?`, anywhere in ${esc(stops.filter(x=>x.pt?.state).map(x=>x.pt.label).join(" or "))},`:""} or ${T.corridor} miles of the route between stops, at your chosen rating, in order along the route.</p>
           <ol class="tall-list">${[...P.cands].sort((a,b)=>a.s-b.s).map(c=>{const l=c.l;return `<li><a href="#" data-open="${esc(l.id)}">${esc(l.name)}</a> ${ratingPill(l)} <span class="small muted">${esc(l.city||"")}, ${esc(l.stateCode||"")} · ${Math.round(c.d)} mi off the route${l.playedBefore?" · played here before":""}</span> ${mineSet.has(l.id)?'<span class="pill">In your tour</span>':`<button type="button" class="linkish small" data-mine-add="${esc(l.id)}">Add to tour</button>`}</li>`}).join("")}</ol>
         </details>`}
       </div>
@@ -1170,7 +1184,7 @@ async function drawTourMap(){
   const placed=[]; // every dot, so dots sharing the same spot can be fanned out
   const sketch=P.pts.map(p=>[p.lat,p.lng]);
   L.polyline(sketch,{color:"#8a9590",weight:2,opacity:.6,dashArray:"2 6"}).addTo(map); // the route you sketched
-  (S.tour.stops||[]).forEach(x=>{ if (x.pt) L.circle([x.pt.lat,x.pt.lng],{radius:(+S.tour.radius||50)*1609.34, color:"#444", weight:1, opacity:.5, dashArray:"4 4", fill:true, fillOpacity:.04, interactive:false}).addTo(map); });
+  (S.tour.stops||[]).forEach(x=>{ if (x.pt && !x.pt.state) L.circle([x.pt.lat,x.pt.lng],{radius:(+S.tour.radius||50)*1609.34, color:"#444", weight:1, opacity:.5, dashArray:"4 4", fill:true, fillOpacity:.04, interactive:false}).addTo(map); });
   P.cands.forEach(c=>{ const l=c.l, r={"Great fit":9,"Good fit":7.5,"Possible":6}[l.vetVerdict]||5;
     const m=L.circleMarker([l.lat,l.lng],{renderer:hit, pane:"venues", radius:r, color:"#fff", weight:1.5, fillColor:rcol(l), fillOpacity:.95}).bindPopup(()=>venuePop(l)).bindTooltip(esc(l.name),{direction:"top",offset:[0,-r]}).addTo(map);
     m.on("mouseover",()=>m.setRadius(r+3)).on("mouseout",()=>m.setRadius(r)); placed.push({m, base:L.latLng(l.lat,l.lng)}); });
@@ -1211,7 +1225,7 @@ function afterTour(){
     for (const p of places) { const pt=p.get();
       if (pt?.suggest) { p.set(null); T.plan=null; render();
         $("#tr-msg").innerHTML = `Couldn't find "${esc(p.q)}". Did you mean: ${pt.suggest.map(x=>`<button type="button" class="linkish" data-tour-fix="${p.field}" data-place="${esc(x)}">${esc(x)}</button>`).join(" · ")}?`; return; }
-      if (!pt) { T.plan=null; render(); $("#tr-msg").textContent=`Couldn't find "${p.q}". Check the spelling and use "City, ST", like Manhattan, KS.`; return; }
+      if (!pt) { T.plan=null; render(); $("#tr-msg").textContent=`Couldn't find "${p.q}". Check the spelling and use "City, ST", like Manhattan, KS, or a state name, like Arkansas.`; return; }
     }
     T.note = places.map(p=>p.get()).filter(p=>p.typed).map(p=>`Using ${p.label} (you typed "${p.typed}").`).join(" ");
     saveTour(); T.plan=planTour(); render();
@@ -1242,18 +1256,21 @@ async function acSearch(input, browse=false){
     towns=towns.map(t=>({...t,d:miles(home,t)})).sort((a,b)=>a.d-b.d);
     AC.items=towns.map(t=>[t.name,t.st,t.lat,t.lng]); AC.idx=-1; AC.input=input;
     const box=acBox(); if (!AC.items.length){ acHide(); return; }
-    box.innerHTML=`<div class="ac-head small muted">${towns.length} towns with venues on your list, nearest first. Keep typing to search every US city.</div>`+
+    box.innerHTML=`<div class="ac-head small muted">${towns.length} towns with venues on your list, nearest first. Keep typing to search every US city, or type a state to cover the whole state.</div>`+
       towns.map((t,i)=>`<div class="ac-it" data-ac="${i}" role="option"><span><b>${esc(t.name)}</b>, ${esc(STATE_NAMES[t.st]||t.st)}</span> <span class="muted small">${t.v?`${t.v} venue${t.v>1?"s":""}`:""}${t.v&&t.f?" · ":""}${t.f?`${t.f} fest${t.f>1?"s":""}`:""} · ${Math.round(t.d)} mi</span></div>`).join("");
     acPlace(input); return; }
   const list=await loadCities(); if (seq!==AC.seq) return;
+  // whole states first: "ar" offers Arizona and Arkansas; "AR" alone also matches the code
+  const states = raw.includes(",") ? [] : Object.keys(STATE_NAMES).filter(k=>normCity(STATE_NAMES[k]).startsWith(q) || (q.length===2 && k.toLowerCase()===q)).slice(0,4);
+  const stCount={}; if (states.length) for (const l of S.leads.values()){ if (!states.includes(l.stateCode)||l.lat==null||l.fitType==="Nashville residency"||l.vetVerdict==="Closed") continue; const t=stCount[l.stateCode]||(stCount[l.stateCode]={v:0,f:0}); kindOf(l)==="festival"?t.f++:t.v++; }
   const hits=[]; for (const c of list){ if (code && c[1]!==code) continue; const n=normCity(c[0]); if (n.startsWith(q)) hits.push({c, starts:2}); else if (q.length>=3 && n.includes(" "+q)) hits.push({c, starts:1}); }
   const leadCount = acLeadCities();
   hits.forEach(h=>{ h.d=miles(home,{lat:h.c[2],lng:h.c[3]}); const k=normCity(h.c[0])+"|"+h.c[1];
     h.score = h.starts*1000 + (BIG_CITIES.has(k)?400:0) + Math.min(leadCount[k]||0,6)*60 - h.d/8; });
   hits.sort((a,b)=>b.score-a.score);
-  AC.items=hits.slice(0,8).map(h=>h.c); AC.idx=AC.items.length?0:-1; AC.input=input;
+  AC.items=[...states.map(k=>({state:k})), ...hits.slice(0,8).map(h=>h.c)]; AC.idx=AC.items.length?0:-1; AC.input=input;
   const box=acBox(); if (!AC.items.length){ acHide(); return; }
-  box.innerHTML=AC.items.map((c,i)=>`<div class="ac-it${i===AC.idx?" on":""}" data-ac="${i}" role="option"><span><b>${esc(c[0])}</b>, ${esc(STATE_NAMES[c[1]]||c[1])}</span> <span class="muted small">${Math.round(miles(home,{lat:c[2],lng:c[3]}))} mi</span></div>`).join("");
+  box.innerHTML=AC.items.map((c,i)=>c.state ? `<div class="ac-it${i===AC.idx?" on":""}" data-ac="${i}" role="option"><span><b>${esc(STATE_NAMES[c.state])}</b> <span class="muted">· whole state</span></span> <span class="muted small">${(()=>{const t=stCount[c.state]||{v:0,f:0}; return [t.v?`${t.v} venue${t.v>1?"s":""}`:"", t.f?`${t.f} fest${t.f>1?"s":""}`:""].filter(Boolean).join(" · ")||"none on your list yet";})()}</span></div>` : `<div class="ac-it${i===AC.idx?" on":""}" data-ac="${i}" role="option"><span><b>${esc(c[0])}</b>, ${esc(STATE_NAMES[c[1]]||c[1])}</span> <span class="muted small">${Math.round(miles(home,{lat:c[2],lng:c[3]}))} mi</span></div>`).join("");
   acPlace(input);
 }
 function acPlace(input){ const box=acBox(), r=input.getBoundingClientRect(); box.scrollTop=0;
@@ -1261,6 +1278,7 @@ function acPlace(input){ const box=acBox(), r=input.getBoundingClientRect(); box
   input.setAttribute("aria-expanded","true"); }
 function acPick(i){
   const c=AC.items[i], input=AC.input; if (!c||!input) return;
+  if (c.state){ input.value=STATE_NAMES[c.state]; acHide(); input.dispatchEvent(new Event("change",{bubbles:true})); return; }
   const label=`${c[0]}, ${c[1]}`; input.value=label;
   try { localStorage.setItem("tm-geo3:"+label.toLowerCase(), JSON.stringify({lat:c[2], lng:c[3], label:`${c[0]}, ${STATE_NAMES[c[1]]}`})); } catch {}
   acHide(); input.dispatchEvent(new Event("change",{bubbles:true}));
